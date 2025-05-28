@@ -135,6 +135,10 @@ Once configured, you can interact with GitHub through your AI assistant:
 - "Show me the structure of the 'gitmcp' repository"
 
 ### File Management
+- \"Delete the old config file from my repository\"
+- \"Remove multiple test files in one commit\"
+- \"Create a new 'docs' folder for documentation\"
+- \"Delete the entire 'deprecated' folder and all its contents\"
 - "Read the package.json file from my project"
 - "Create a new Python file with a basic Flask app"
 - "Search for all TODO comments in my codebase"
