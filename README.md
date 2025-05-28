@@ -202,22 +202,28 @@ This will open a web interface where you can test all the available tools intera
 
 ### Common Issues
 
-1. **"Server not found" error**
-   - Verify the command path is correct
-   - Ensure the package is installed globally (`npm install -g gitmcp`)
+1. **"Server not found" or "Command not found" error**
+   - Verify Python is installed and accessible via `python` command
+   - Check the full path to `gitmcp.py` is correct in your config
+   - Try using the full path to Python: `/usr/bin/python3` or `/usr/local/bin/python`
 
-2. **Authentication errors**
-   - Check your GitHub token has the required scopes
-   - Verify the token is set in the environment variables
+2. **"No module named 'fastmcp'" or "No module named 'github'"**
+   - Install the required packages: `pip install fastmcp PyGithub`
+   - If using Python virtual environments, ensure packages are installed in the active environment
 
-3. **Permission denied**
+3. **Authentication errors**
+   - Check your GitHub token has the required scopes (`repo`, `user`)
+   - Verify the token is set correctly in the environment variables
+   - Test your token works: `curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user`
+
+4. **Permission denied**
    - Ensure your GitHub token has access to the target repositories
    - Check if the repository exists and you have the required permissions
 
 ### Debug Mode
-Set environment variable for verbose logging:
+For verbose logging, you can modify the `gitmcp.py` file to add debug output or run with Python's verbose flag:
 ```bash
-DEBUG=gitmcp node build/index.js
+python -v gitmcp.py
 ```
 
 ## Contributing
