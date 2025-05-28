@@ -581,6 +581,252 @@ def create_pull_request(owner: str, repo_name: str, title: str, body: str,
     except GithubException as e:
         return {"error": f"Failed to create pull request: {str(e)}"}
 
+@mcp.tool()
+def delete_file(owner: str, repo_name: str, file_path: str, commit_message: str,
+               branch: str = "main") -> Dict[str, Any]:
+    """
+    Delete a file from a GitHub repository
+
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        file_path: Path to the file to delete
+        commit_message: Commit message for this change
+        branch: Branch to delete from (default: main)
+
+    Returns:
+        Deletion result information
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Get the file to delete (we need its SHA)
+        file_content = repo.get_contents(file_path, ref=branch)
+        
+        # Delete the file
+        result = repo.delete_file(
+            path=file_path,
+            message=commit_message,
+            sha=file_content.sha,
+            branch=branch
+        )
+        
+        return {
+            "action": "file_deleted",
+            "path": file_path,
+            "commit_sha": result["commit"].sha,
+            "commit_message": commit_message,
+            "branch": branch,
+            "commit_url": result["commit"].html_url
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to delete file: {str(e)}"}
+
+@mcp.tool()
+def delete_files_batch(owner: str, repo_name: str, file_paths: List[str],
+                      commit_message: str, branch: str = "main") -> Dict[str, Any]:
+    """
+    Delete multiple files in a single commit
+
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        file_paths: List of file paths to delete
+        commit_message: Commit message for all deletions
+        branch: Branch to delete from (default: main)
+
+    Returns:
+        Batch deletion information
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Get the latest commit from the branch
+        ref = repo.get_git_ref(f"heads/{branch}")
+        latest_commit = repo.get_git_commit(ref.object.sha)
+        
+        # Get current tree
+        base_tree = latest_commit.tree
+        
+        # Get all files that need to be kept (everything except the ones to delete)
+        tree_elements = []
+        all_contents = []
+        
+        def get_all_files(path=""):
+            """Recursively get all files in the repo"""
+            try:
+                contents = repo.get_contents(path, ref=branch)
+                if not isinstance(contents, list):
+                    contents = [contents]
+                
+                for content in contents:
+                    if content.type == "dir":
+                        get_all_files(content.path)
+                    else:
+                        all_contents.append(content)
+            except:
+                pass
+        
+        get_all_files()
+        
+        # Keep all files except the ones to delete
+        for content in all_contents:
+            if content.path not in file_paths:
+                tree_elements.append({
+                    "path": content.path,
+                    "mode": "100644",
+                    "type": "blob",
+                    "sha": content.sha
+                })
+        
+        # Create tree without the deleted files
+        tree = repo.create_git_tree(tree_elements)
+        
+        # Create commit
+        commit = repo.create_git_commit(commit_message, tree, [latest_commit])
+        
+        # Update reference
+        ref.edit(commit.sha)
+        
+        return {
+            "action": "files_deleted_batch",
+            "files_deleted": len(file_paths),
+            "deleted_paths": file_paths,
+            "commit_sha": commit.sha,
+            "commit_message": commit_message,
+            "branch": branch
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to batch delete files: {str(e)}"}
+
+@mcp.tool()
+def create_folder(owner: str, repo_name: str, folder_path: str, 
+                 commit_message: str = None, branch: str = "main") -> Dict[str, Any]:
+    """
+    Create a folder in a GitHub repository
+    
+    Note: Git doesn't track empty folders, so this creates a .gitkeep file inside the folder
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        folder_path: Path of the folder to create
+        commit_message: Commit message (optional, auto-generated if not provided)
+        branch: Branch to create folder in (default: main)
+    
+    Returns:
+        Folder creation result
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Ensure folder path ends with / and add .gitkeep
+        if not folder_path.endswith('/'):
+            folder_path += '/'
+        gitkeep_path = folder_path + '.gitkeep'
+        
+        # Auto-generate commit message if not provided
+        if not commit_message:
+            commit_message = f"Create folder {folder_path}"
+        
+        # Create .gitkeep file to establish the folder
+        result = repo.create_file(
+            path=gitkeep_path,
+            message=commit_message,
+            content="# This file exists to create the folder structure\n",
+            branch=branch
+        )
+        
+        return {
+            "action": "folder_created",
+            "folder_path": folder_path,
+            "gitkeep_path": gitkeep_path,
+            "commit_sha": result["commit"].sha,
+            "commit_message": commit_message,
+            "branch": branch,
+            "commit_url": result["commit"].html_url,
+            "note": "Folder created with .gitkeep file (Git doesn't track empty folders)"
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to create folder: {str(e)}"}
+
+@mcp.tool()
+def delete_folder(owner: str, repo_name: str, folder_path: str,
+                 commit_message: str = None, branch: str = "main") -> Dict[str, Any]:
+    """
+    Delete a folder and all its contents from a GitHub repository
+
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        folder_path: Path of the folder to delete
+        commit_message: Commit message (optional, auto-generated if not provided)
+        branch: Branch to delete from (default: main)
+
+    Returns:
+        Folder deletion result
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Ensure folder path format
+        if not folder_path.endswith('/'):
+            folder_path += '/'
+        
+        # Auto-generate commit message if not provided
+        if not commit_message:
+            commit_message = f"Delete folder {folder_path} and all its contents"
+        
+        # Get all files in the folder
+        def get_folder_files(path):
+            """Recursively get all files in a folder"""
+            files_to_delete = []
+            try:
+                contents = repo.get_contents(path.rstrip('/'), ref=branch)
+                if not isinstance(contents, list):
+                    contents = [contents]
+                
+                for content in contents:
+                    if content.type == "dir":
+                        files_to_delete.extend(get_folder_files(content.path))
+                    else:
+                        files_to_delete.append(content.path)
+                        
+            except GithubException:
+                # Folder doesn't exist
+                pass
+            return files_to_delete
+        
+        files_in_folder = get_folder_files(folder_path)
+        
+        if not files_in_folder:
+            return {"error": f"Folder '{folder_path}' not found or is empty"}
+        
+        # Use batch delete to remove all files in the folder
+        result = delete_files_batch(owner, repo_name, files_in_folder, commit_message, branch)
+        
+        if "error" in result:
+            return result
+        
+        # Update the result to indicate folder deletion
+        result.update({
+            "action": "folder_deleted",
+            "folder_path": folder_path,
+            "files_in_folder": len(files_in_folder)
+        })
+        
+        return result
+        
+    except GithubException as e:
+        return {"error": f"Failed to delete folder: {str(e)}"}
+
 if __name__ == "__main__":
     # Run the MCP server
     mcp.run()
