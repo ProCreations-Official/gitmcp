@@ -168,23 +168,27 @@ Once configured, you can interact with GitHub through your AI assistant:
 
 ### Building from Source
 ```bash
-git clone https://github.com/[username]/gitmcp.git
+git clone https://github.com/ProCreations-Official/gitmcp.git
 cd gitmcp
-npm install
-npm run build
-npm run dev  # For development with auto-reload
+pip install fastmcp PyGithub
+python gitmcp.py
 ```
 
-### Testing
+### Testing Your Setup
+Test that your MCP server is working by running it directly:
 ```bash
-npm test
+python gitmcp.py
 ```
+
+You should see output indicating the FastMCP server has started.
 
 ### Using MCP Inspector
 Debug your MCP server with the official inspector:
 ```bash
-npx @modelcontextprotocol/inspector node build/index.js
+npx @modelcontextprotocol/inspector python gitmcp.py
 ```
+
+This will open a web interface where you can test all the available tools interactively.
 
 ## Security Considerations
 
