@@ -159,7 +159,13 @@ Once configured, you can interact with GitHub through your AI assistant:
 - `read_file` - Read file contents
 - `write_file` - Create or update files
 - `edit_file` - Make targeted edits to files
+- `delete_file` - Delete a single file
 - `batch_update_files` - Update multiple files at once
+- `delete_files_batch` - Delete multiple files in one commit
+
+### Folder Tools
+- `create_folder` - Create new folders (with .gitkeep file)
+- `delete_folder` - Delete folders and all their contents
 
 ### Search & Navigation
 - `search_code` - Search for code within repositories
