@@ -12,11 +12,12 @@ This GitHub MCP server provides the following capabilities:
 
 ### 🔧 Tools (AI-controlled actions)
 - **Repository Management**: Create, list, and delete repositories
-- **File Operations**: Read, write, edit, and search files
+- **File Operations**: Read, write, edit, delete files and manage directories
+- **Folder Management**: Create and delete folders with all contents
 - **Branch Management**: Create branches and manage repository structure
 - **Pull Requests**: Create and manage pull requests
 - **Code Search**: Search for code across repositories
-- **Batch Operations**: Update multiple files in a single commit
+- **Batch Operations**: Update or delete multiple files in a single commit
 
 ### 📁 Resources (Context for AI)
 - Repository metadata and structure
