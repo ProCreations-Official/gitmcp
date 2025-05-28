@@ -25,17 +25,27 @@ This GitHub MCP server provides the following capabilities:
 
 ## Installation
 
-### Option 1: NPM (Recommended)
+### Prerequisites
+- Python 3.8+ 
+- pip (Python package manager)
+
+### Required Python Packages
 ```bash
-npm install -g gitmcp
+pip install fastmcp PyGithub
 ```
 
-### Option 2: Local Development
+### Option 1: Direct Download
+Download the `gitmcp.py` file from this repository and run it directly:
 ```bash
-git clone https://github.com/[username]/gitmcp.git
+python gitmcp.py
+```
+
+### Option 2: Clone Repository
+```bash
+git clone https://github.com/ProCreations-Official/gitmcp.git
 cd gitmcp
-npm install
-npm run build
+pip install -r requirements.txt  # if available
+python gitmcp.py
 ```
 
 ## Setup
