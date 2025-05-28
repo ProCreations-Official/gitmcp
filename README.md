@@ -66,13 +66,12 @@ You'll need a GitHub Personal Access Token (PAT) with appropriate permissions:
 
 Add to your `claude_desktop_config.json`:
 
-**For NPM installation:**
 ```json
 {
   "mcpServers": {
     "gitmcp": {
-      "command": "npx",
-      "args": ["-y", "gitmcp"],
+      "command": "python",
+      "args": ["/path/to/gitmcp.py"],
       "env": {
         "GITHUB_TOKEN": "your_github_token_here"
       }
@@ -81,20 +80,7 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-**For local development:**
-```json
-{
-  "mcpServers": {
-    "gitmcp": {
-      "command": "node",
-      "args": ["/path/to/gitmcp/build/index.js"],
-      "env": {
-        "GITHUB_TOKEN": "your_github_token_here"
-      }
-    }
-  }
-}
-```
+Replace `/path/to/gitmcp.py` with the actual path to where you downloaded or cloned the file.
 
 #### VS Code (with Copilot)
 
@@ -104,8 +90,8 @@ Create `.vscode/mcp.json` in your workspace:
   "servers": {
     "gitmcp": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "gitmcp"],
+      "command": "python",
+      "args": ["/path/to/gitmcp.py"],
       "env": {
         "GITHUB_TOKEN": "your_github_token_here"
       }
@@ -121,8 +107,8 @@ Create `.cursor/mcp.json`:
 {
   "mcpServers": {
     "gitmcp": {
-      "command": "npx",
-      "args": ["-y", "gitmcp"],
+      "command": "python",
+      "args": ["/path/to/gitmcp.py"],
       "env": {
         "GITHUB_TOKEN": "your_github_token_here"
       }
