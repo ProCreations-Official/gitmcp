@@ -7,6 +7,11 @@ A custom MCP server that lets Claude read, edit, and write to your GitHub repos
 import os
 import sys
 import base64
+import subprocess
+import tempfile
+import shutil
+import threading
+import time
 from typing import Dict, List, Optional, Any
 from github import Github, GithubException
 from mcp.server.fastmcp import FastMCP
@@ -17,6 +22,9 @@ mcp = FastMCP("GitHub Code Assistant")
 
 # Global GitHub client (will be initialized with token)
 github_client: Optional[Github] = None
+
+# Store running processes
+running_processes: Dict[str, subprocess.Popen] = {}
 
 @dataclass
 class FileChange:
