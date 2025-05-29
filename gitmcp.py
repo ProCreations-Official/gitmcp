@@ -827,6 +827,332 @@ def delete_folder(owner: str, repo_name: str, folder_path: str,
     except GithubException as e:
         return {"error": f"Failed to delete folder: {str(e)}"}
 
+@mcp.tool()
+def move_file(owner: str, repo_name: str, source_path: str, destination_path: str,
+              commit_message: str = None, branch: str = "main") -> Dict[str, Any]:
+    """
+    Move a file from one location to another within a GitHub repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        source_path: Current path of the file
+        destination_path: New path for the file (can be in a different folder)
+        commit_message: Commit message (optional, auto-generated if not provided)
+        branch: Branch to move file on (default: main)
+    
+    Returns:
+        Move operation result
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Auto-generate commit message if not provided
+        if not commit_message:
+            commit_message = f"Move {source_path} to {destination_path}"
+        
+        # Get the source file content
+        source_file = repo.get_contents(source_path, ref=branch)
+        
+        # Decode content if it's base64 encoded
+        if source_file.encoding == "base64":
+            content = base64.b64decode(source_file.content).decode('utf-8')
+        else:
+            content = source_file.content
+        
+        # Check if destination already exists
+        try:
+            existing_dest = repo.get_contents(destination_path, ref=branch)
+            return {"error": f"Destination file '{destination_path}' already exists"}
+        except GithubException:
+            # Good, destination doesn't exist
+            pass
+        
+        # Get the latest commit for batch operation
+        ref = repo.get_git_ref(f"heads/{branch}")
+        latest_commit = repo.get_git_commit(ref.object.sha)
+        
+        # Create blob for the destination file
+        blob = repo.create_git_blob(content, "utf-8")
+        
+        # Get current tree and build new tree
+        tree_elements = []
+        
+        # Get all current files except the source file
+        def get_all_files(path=""):
+            """Recursively get all files in the repo"""
+            try:
+                contents = repo.get_contents(path, ref=branch)
+                if not isinstance(contents, list):
+                    contents = [contents]
+                
+                for content_item in contents:
+                    if content_item.type == "dir":
+                        get_all_files(content_item.path)
+                    elif content_item.path != source_path:  # Exclude source file
+                        tree_elements.append({
+                            "path": content_item.path,
+                            "mode": "100644",
+                            "type": "blob",
+                            "sha": content_item.sha
+                        })
+            except:
+                pass
+        
+        get_all_files()
+        
+        # Add the file at the new destination
+        tree_elements.append({
+            "path": destination_path,
+            "mode": "100644",
+            "type": "blob",
+            "sha": blob.sha
+        })
+        
+        # Create tree with the moved file
+        tree = repo.create_git_tree(tree_elements)
+        
+        # Create commit
+        commit = repo.create_git_commit(commit_message, tree, [latest_commit])
+        
+        # Update reference
+        ref.edit(commit.sha)
+        
+        return {
+            "action": "file_moved",
+            "source_path": source_path,
+            "destination_path": destination_path,
+            "commit_sha": commit.sha,
+            "commit_message": commit_message,
+            "branch": branch
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to move file: {str(e)}"}
+
+@mcp.tool()
+def move_files_batch(owner: str, repo_name: str, moves: List[Dict[str, str]],
+                    commit_message: str = None, branch: str = "main") -> Dict[str, Any]:
+    """
+    Move multiple files in a single commit
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        moves: List of moves, each with 'source' and 'destination' keys
+        commit_message: Commit message (optional, auto-generated if not provided)
+        branch: Branch to move files on (default: main)
+    
+    Returns:
+        Batch move operation result
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Auto-generate commit message if not provided
+        if not commit_message:
+            move_summary = ", ".join([f"{move['source']} → {move['destination']}" for move in moves[:3]])
+            if len(moves) > 3:
+                move_summary += f" and {len(moves) - 3} more"
+            commit_message = f"Move files: {move_summary}"
+        
+        # Validate all moves first
+        source_paths = []
+        dest_paths = []
+        file_contents = {}
+        
+        for move in moves:
+            source = move["source"]
+            dest = move["destination"]
+            
+            # Check for duplicates
+            if source in source_paths:
+                return {"error": f"Duplicate source path: {source}"}
+            if dest in dest_paths:
+                return {"error": f"Duplicate destination path: {dest}"}
+            
+            source_paths.append(source)
+            dest_paths.append(dest)
+            
+            # Get source file content
+            try:
+                source_file = repo.get_contents(source, ref=branch)
+                if source_file.encoding == "base64":
+                    content = base64.b64decode(source_file.content).decode('utf-8')
+                else:
+                    content = source_file.content
+                file_contents[dest] = content
+            except GithubException:
+                return {"error": f"Source file not found: {source}"}
+            
+            # Check if destination already exists (unless it's one of our sources)
+            if dest not in source_paths:
+                try:
+                    repo.get_contents(dest, ref=branch)
+                    return {"error": f"Destination file already exists: {dest}"}
+                except GithubException:
+                    pass  # Good, destination doesn't exist
+        
+        # Get the latest commit for batch operation
+        ref = repo.get_git_ref(f"heads/{branch}")
+        latest_commit = repo.get_git_commit(ref.object.sha)
+        
+        # Create blobs for destination files
+        dest_blobs = {}
+        for dest, content in file_contents.items():
+            blob = repo.create_git_blob(content, "utf-8")
+            dest_blobs[dest] = blob.sha
+        
+        # Build new tree
+        tree_elements = []
+        
+        # Get all current files except the source files
+        def get_all_files(path=""):
+            """Recursively get all files in the repo"""
+            try:
+                contents = repo.get_contents(path, ref=branch)
+                if not isinstance(contents, list):
+                    contents = [contents]
+                
+                for content_item in contents:
+                    if content_item.type == "dir":
+                        get_all_files(content_item.path)
+                    elif content_item.path not in source_paths:  # Exclude source files
+                        tree_elements.append({
+                            "path": content_item.path,
+                            "mode": "100644",
+                            "type": "blob",
+                            "sha": content_item.sha
+                        })
+            except:
+                pass
+        
+        get_all_files()
+        
+        # Add files at their new destinations
+        for dest, blob_sha in dest_blobs.items():
+            tree_elements.append({
+                "path": dest,
+                "mode": "100644",
+                "type": "blob",
+                "sha": blob_sha
+            })
+        
+        # Create tree with moved files
+        tree = repo.create_git_tree(tree_elements)
+        
+        # Create commit
+        commit = repo.create_git_commit(commit_message, tree, [latest_commit])
+        
+        # Update reference
+        ref.edit(commit.sha)
+        
+        return {
+            "action": "files_moved_batch",
+            "files_moved": len(moves),
+            "moves": [{"source": move["source"], "destination": move["destination"]} for move in moves],
+            "commit_sha": commit.sha,
+            "commit_message": commit_message,
+            "branch": branch
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to batch move files: {str(e)}"}
+
+@mcp.tool()
+def update_repo_settings(owner: str, repo_name: str, new_name: str = None, 
+                        private: bool = None, description: str = None,
+                        homepage: str = None, has_issues: bool = None,
+                        has_wiki: bool = None, has_downloads: bool = None) -> Dict[str, Any]:
+    """
+    Update repository settings like name, privacy, description, etc.
+    
+    Args:
+        owner: Repository owner
+        repo_name: Current repository name
+        new_name: New repository name (optional)
+        private: Whether the repo should be private (optional)
+        description: New repository description (optional)
+        homepage: Homepage URL (optional)
+        has_issues: Enable/disable issues (optional)
+        has_wiki: Enable/disable wiki (optional)
+        has_downloads: Enable/disable downloads (optional)
+    
+    Returns:
+        Updated repository information
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Prepare update parameters
+        update_params = {}
+        changes_made = []
+        
+        if new_name is not None and new_name != repo.name:
+            update_params["name"] = new_name
+            changes_made.append(f"name: {repo.name} → {new_name}")
+        
+        if private is not None and private != repo.private:
+            update_params["private"] = private
+            privacy_status = "private" if private else "public"
+            old_status = "private" if repo.private else "public"
+            changes_made.append(f"privacy: {old_status} → {privacy_status}")
+        
+        if description is not None and description != repo.description:
+            update_params["description"] = description
+            old_desc = repo.description or "(no description)"
+            changes_made.append(f"description: {old_desc[:50]}... → {description[:50]}...")
+        
+        if homepage is not None and homepage != repo.homepage:
+            update_params["homepage"] = homepage
+            old_home = repo.homepage or "(no homepage)"
+            changes_made.append(f"homepage: {old_home} → {homepage}")
+        
+        if has_issues is not None and has_issues != repo.has_issues:
+            update_params["has_issues"] = has_issues
+            changes_made.append(f"issues: {'enabled' if has_issues else 'disabled'}")
+        
+        if has_wiki is not None and has_wiki != repo.has_wiki:
+            update_params["has_wiki"] = has_wiki
+            changes_made.append(f"wiki: {'enabled' if has_wiki else 'disabled'}")
+        
+        if has_downloads is not None and has_downloads != repo.has_downloads:
+            update_params["has_downloads"] = has_downloads
+            changes_made.append(f"downloads: {'enabled' if has_downloads else 'disabled'}")
+        
+        if not update_params:
+            return {"message": "No changes needed - all settings are already as specified"}
+        
+        # Update the repository
+        repo.edit(**update_params)
+        
+        # Refresh repo object to get updated info
+        updated_repo = client.get_repo(f"{owner}/{new_name if new_name else repo_name}")
+        
+        return {
+            "action": "repository_updated",
+            "old_name": repo_name,
+            "new_name": updated_repo.name,
+            "changes_made": changes_made,
+            "updated_settings": {
+                "name": updated_repo.name,
+                "full_name": updated_repo.full_name,
+                "description": updated_repo.description,
+                "private": updated_repo.private,
+                "homepage": updated_repo.homepage,
+                "has_issues": updated_repo.has_issues,
+                "has_wiki": updated_repo.has_wiki,
+                "has_downloads": updated_repo.has_downloads,
+                "url": updated_repo.html_url
+            }
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to update repository settings: {str(e)}"}
+
 if __name__ == "__main__":
     # Run the MCP server
     mcp.run()
