@@ -180,22 +180,41 @@ async def root():
     }
 
 @app.get("/mcp/tools")
-async def list_tools(user=Depends(get_current_user)):
+async def list_tools(request: Request):
     """List available MCP tools"""
-    tools = []
-    for tool_name, tool_func in MCP_TOOLS.items():
-        # Get tool metadata from the function
-        doc = tool_func.__doc__ or ""
-        tools.append({
-            "name": tool_name,
-            "description": doc.strip().split('\n')[0] if doc else f"Execute {tool_name}",
-            "parameters": getattr(tool_func, '_mcp_schema', {})
-        })
-    
-    return {
-        "tools": tools,
-        "user": user["username"]
-    }
+    try:
+        # Try to get user info, but don't fail if no auth
+        token = request.headers.get("authorization")
+        if token and token.startswith("Bearer "):
+            token = token[7:]
+        elif not token:
+            token = os.getenv("GITHUB_TOKEN")
+        
+        user_info = "anonymous"
+        if token:
+            try:
+                client = get_github_client(token)
+                user = client.get_user()
+                user_info = user.login
+            except:
+                pass
+        
+        tools = []
+        for tool_name, tool_func in MCP_TOOLS.items():
+            doc = tool_func.__doc__ or ""
+            tools.append({
+                "name": tool_name,
+                "description": doc.strip().split('\n')[0] if doc else f"Execute {tool_name}",
+                "parameters": getattr(tool_func, '_mcp_schema', {})
+            })
+        
+        return {
+            "tools": tools,
+            "user": user_info,
+            "total_tools": len(tools)
+        }
+    except Exception as e:
+        return {"error": f"Failed to list tools: {str(e)}"}
 
 @app.post("/mcp/http")
 async def mcp_http_handler(request: Request):
