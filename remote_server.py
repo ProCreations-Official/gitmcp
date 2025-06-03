@@ -223,43 +223,45 @@ async def mcp_http_handler(request: Request):
         # Read the request body
         body = await request.json()
         
-        # Extract token from request (try multiple methods)
+        # Claude sends authorization_token as Bearer token in Authorization header
         token = None
+        auth_header = request.headers.get("authorization", "")
         
-        # Method 1: From Authorization header
-        auth_header = request.headers.get("authorization")
-        if auth_header:
-            if auth_header.startswith("Bearer "):
-                token = auth_header[7:]
-            else:
-                token = auth_header
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]  # Remove "Bearer " prefix
+        elif auth_header.startswith("github_pat_"):
+            token = auth_header  # Direct token without Bearer prefix
         
-        # Method 2: From X-API-Key header (alternative)
-        if not token:
-            token = request.headers.get("x-api-key")
-        
-        # Method 3: Fallback to environment
+        # Fallback to environment for development
         if not token:
             token = os.getenv("GITHUB_TOKEN")
         
         if not token:
+            logger.error("No authorization token provided")
             return {
                 "jsonrpc": "2.0",
-                "error": {"code": -32002, "message": "GitHub token required"},
+                "error": {
+                    "code": -32002, 
+                    "message": "Authorization required. Please provide a GitHub Personal Access Token."
+                },
                 "id": body.get("id")
             }
         
-        # Setup GitHub environment
+        # Setup GitHub environment and validate token
         setup_github_env(token)
         
-        # Validate token
         try:
             client = get_github_client(token)
             user = client.get_user()
+            logger.info(f"Authenticated as GitHub user: {user.login}")
         except Exception as e:
+            logger.error(f"GitHub authentication failed: {str(e)}")
             return {
                 "jsonrpc": "2.0", 
-                "error": {"code": -32002, "message": f"Invalid GitHub token: {str(e)}"},
+                "error": {
+                    "code": -32002, 
+                    "message": f"Invalid GitHub token. Please check your Personal Access Token has 'repo' permissions."
+                },
                 "id": body.get("id")
             }
         
@@ -267,12 +269,19 @@ async def mcp_http_handler(request: Request):
         params = body.get("params", {})
         request_id = body.get("id")
         
+        logger.info(f"Processing MCP method: {method}")
+        
         if method == "tools/list":
             # Return available tools
             tools = []
             for tool_name, tool_func in MCP_TOOLS.items():
                 doc = tool_func.__doc__ or ""
                 description = doc.strip().split('\n')[0] if doc else f"Execute {tool_name}"
+                
+                # Clean up the description
+                if description.endswith(":"):
+                    description = description[:-1]
+                
                 tools.append({
                     "name": tool_name,
                     "description": description,
@@ -283,6 +292,7 @@ async def mcp_http_handler(request: Request):
                     }
                 })
             
+            logger.info(f"Returning {len(tools)} available tools")
             return {
                 "jsonrpc": "2.0",
                 "result": {"tools": tools},
@@ -294,7 +304,10 @@ async def mcp_http_handler(request: Request):
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
             
+            logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+            
             if tool_name not in MCP_TOOLS:
+                logger.error(f"Tool not found: {tool_name}")
                 return {
                     "jsonrpc": "2.0",
                     "error": {"code": -32601, "message": f"Tool not found: {tool_name}"},
@@ -304,13 +317,22 @@ async def mcp_http_handler(request: Request):
             try:
                 # Execute the tool
                 result = MCP_TOOLS[tool_name](**tool_args)
+                
+                # Format the response properly
+                if isinstance(result, dict) and "error" in result:
+                    # Handle tool errors gracefully
+                    response_text = f"Error: {result['error']}"
+                else:
+                    response_text = json.dumps(result, indent=2)
+                
+                logger.info(f"Tool {tool_name} executed successfully")
                 return {
                     "jsonrpc": "2.0",
                     "result": {
                         "content": [
                             {
                                 "type": "text", 
-                                "text": json.dumps(result, indent=2)
+                                "text": response_text
                             }
                         ]
                     },
@@ -318,7 +340,7 @@ async def mcp_http_handler(request: Request):
                 }
             
             except Exception as e:
-                logger.error(f"Tool execution error: {e}")
+                logger.error(f"Tool execution error for {tool_name}: {e}")
                 return {
                     "jsonrpc": "2.0",
                     "error": {"code": -32603, "message": f"Tool execution failed: {str(e)}"},
@@ -326,12 +348,20 @@ async def mcp_http_handler(request: Request):
                 }
         
         else:
+            logger.error(f"Unknown method: {method}")
             return {
                 "jsonrpc": "2.0",
                 "error": {"code": -32601, "message": f"Method not found: {method}"},
                 "id": request_id
             }
     
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in request: {e}")
+        return {
+            "jsonrpc": "2.0",
+            "error": {"code": -32700, "message": "Parse error: Invalid JSON"},
+            "id": None
+        }
     except Exception as e:
         logger.error(f"Request processing error: {e}")
         return {
