@@ -52,7 +52,7 @@ This GitHub MCP server provides the following capabilities:
 
 ### Required Python Packages
 ```bash
-pip install fastmcp PyGithub
+pip install fastmcp PyGithub fastapi uvicorn
 ```
 
 ### Option 1: Direct Download
@@ -65,9 +65,35 @@ python gitmcp.py
 ```bash
 git clone https://github.com/ProCreations-Official/gitmcp.git
 cd gitmcp
-pip install -r requirements.txt  # if available
+pip install -r requirements.txt
 python gitmcp.py
 ```
+
+## 🌐 Remote Deployment (for Integrations)
+
+For Anthropic Integrations, deploy GitMCP as a web service:
+
+### Docker Deployment (Recommended)
+```bash
+git clone https://github.com/ProCreations-Official/gitmcp.git
+cd gitmcp
+docker-compose up -d
+```
+
+### Manual Deployment
+```bash
+pip install -r requirements.txt
+python remote_server.py
+```
+
+### Cloud Platforms
+- **Railway**: Connect this GitHub repo for auto-deployment
+- **Render**: Deploy as a web service 
+- **Vercel**: Deploy with Docker support
+- **Heroku**: Deploy with container stack
+- **DigitalOcean App Platform**: Deploy from GitHub
+
+Your server will be available at `https://your-domain.com` and ready for Claude integrations!
 
 ## Setup
 
