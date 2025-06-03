@@ -198,13 +198,51 @@ async def list_tools(user=Depends(get_current_user)):
     }
 
 @app.post("/mcp/http")
-async def mcp_http_handler(request: Request, user=Depends(get_current_user)):
+async def mcp_http_handler(request: Request):
     """Handle MCP requests via HTTP"""
     try:
+        # Read the request body
         body = await request.json()
         
-        # Setup GitHub environment for the user's token
-        setup_github_env(user["token"])
+        # Extract token from request (try multiple methods)
+        token = None
+        
+        # Method 1: From Authorization header
+        auth_header = request.headers.get("authorization")
+        if auth_header:
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+            else:
+                token = auth_header
+        
+        # Method 2: From X-API-Key header (alternative)
+        if not token:
+            token = request.headers.get("x-api-key")
+        
+        # Method 3: Fallback to environment
+        if not token:
+            token = os.getenv("GITHUB_TOKEN")
+        
+        if not token:
+            return {
+                "jsonrpc": "2.0",
+                "error": {"code": -32002, "message": "GitHub token required"},
+                "id": body.get("id")
+            }
+        
+        # Setup GitHub environment
+        setup_github_env(token)
+        
+        # Validate token
+        try:
+            client = get_github_client(token)
+            user = client.get_user()
+        except Exception as e:
+            return {
+                "jsonrpc": "2.0", 
+                "error": {"code": -32002, "message": f"Invalid GitHub token: {str(e)}"},
+                "id": body.get("id")
+            }
         
         method = body.get("method")
         params = body.get("params", {})
@@ -215,14 +253,22 @@ async def mcp_http_handler(request: Request, user=Depends(get_current_user)):
             tools = []
             for tool_name, tool_func in MCP_TOOLS.items():
                 doc = tool_func.__doc__ or ""
+                description = doc.strip().split('\n')[0] if doc else f"Execute {tool_name}"
                 tools.append({
                     "name": tool_name,
-                    "description": doc.strip().split('\n')[0] if doc else f"Execute {tool_name}",
-                    "inputSchema": getattr(tool_func, '_mcp_schema', {"type": "object"})
+                    "description": description,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": True
+                    }
                 })
             
-            response = MCPResponse(result={"tools": tools}, id=request_id)
-            return response.to_dict()
+            return {
+                "jsonrpc": "2.0",
+                "result": {"tools": tools},
+                "id": request_id
+            }
         
         elif method == "tools/call":
             # Execute a tool
@@ -230,32 +276,50 @@ async def mcp_http_handler(request: Request, user=Depends(get_current_user)):
             tool_args = params.get("arguments", {})
             
             if tool_name not in MCP_TOOLS:
-                error = {"code": -32601, "message": f"Tool not found: {tool_name}"}
-                response = MCPResponse(error=error, id=request_id)
-                return response.to_dict()
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32601, "message": f"Tool not found: {tool_name}"},
+                    "id": request_id
+                }
             
             try:
                 # Execute the tool
                 result = MCP_TOOLS[tool_name](**tool_args)
-                response = MCPResponse(result={"content": [{"type": "text", "text": json.dumps(result, indent=2)}]}, id=request_id)
-                return response.to_dict()
+                return {
+                    "jsonrpc": "2.0",
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text", 
+                                "text": json.dumps(result, indent=2)
+                            }
+                        ]
+                    },
+                    "id": request_id
+                }
             
             except Exception as e:
                 logger.error(f"Tool execution error: {e}")
-                error = {"code": -32603, "message": f"Tool execution failed: {str(e)}"}
-                response = MCPResponse(error=error, id=request_id)
-                return response.to_dict()
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32603, "message": f"Tool execution failed: {str(e)}"},
+                    "id": request_id
+                }
         
         else:
-            error = {"code": -32601, "message": f"Method not found: {method}"}
-            response = MCPResponse(error=error, id=request_id)
-            return response.to_dict()
+            return {
+                "jsonrpc": "2.0",
+                "error": {"code": -32601, "message": f"Method not found: {method}"},
+                "id": request_id
+            }
     
     except Exception as e:
         logger.error(f"Request processing error: {e}")
-        error = {"code": -32603, "message": f"Internal error: {str(e)}"}
-        response = MCPResponse(error=error, id=request_id)
-        return response.to_dict()
+        return {
+            "jsonrpc": "2.0",
+            "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+            "id": None
+        }
 
 @app.get("/mcp/sse")
 async def mcp_sse_handler(user=Depends(get_current_user)):
