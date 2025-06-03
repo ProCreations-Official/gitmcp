@@ -63,12 +63,36 @@ def get_github_client(token: str) -> Github:
             raise HTTPException(status_code=401, detail="Invalid GitHub token")
     return github_clients[token]
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Extract and validate the GitHub token from the Authorization header"""
-    if not credentials:
-        raise HTTPException(status_code=401, detail="Authorization header required")
+async def get_current_user(request: Request):
+    """Extract and validate the GitHub token from the request"""
+    token = None
     
-    token = credentials.credentials
+    # Try to get token from Authorization header
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:]  # Remove "Bearer " prefix
+    elif auth_header:
+        token = auth_header
+    
+    # Try to get token from the request body for MCP calls
+    if not token:
+        try:
+            body = await request.body()
+            if body:
+                import json
+                data = json.loads(body)
+                # Look for authorization_token in MCP server config
+                if isinstance(data, dict) and "authorization_token" in data:
+                    token = data["authorization_token"]
+        except:
+            pass
+    
+    # Fallback to environment variable for development
+    if not token:
+        token = os.getenv("GITHUB_TOKEN")
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="GitHub token required")
     
     # Validate the token by creating a GitHub client
     try:
@@ -80,6 +104,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             "client": client
         }
     except Exception as e:
+        logger.error(f"Auth failed for token: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 
 # MCP Protocol Implementation
