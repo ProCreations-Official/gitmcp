@@ -2,6 +2,8 @@
 
 A Model Context Protocol (MCP) server that provides comprehensive GitHub integration for AI assistants like Claude, enabling seamless repository management, code browsing, and collaborative workflows.
 
+🎉 **NEW**: Now supports **Anthropic Integrations** for remote MCP connectivity! Connect Claude directly to your GitHub repositories through the cloud.
+
 ## What is MCP?
 
 The Model Context Protocol (MCP) is an open standard developed by Anthropic that enables AI assistants to connect securely with external data sources and tools. Think of it as "USB-C for AI applications" - it provides a standardized way to extend AI capabilities without custom integrations.
