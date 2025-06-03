@@ -175,8 +175,48 @@ async def root():
         "endpoints": {
             "sse": "/mcp/sse",
             "http": "/mcp/http",
-            "tools": "/mcp/tools"
+            "tools": "/mcp/tools",
+            "debug": "/debug"
         }
+    }
+
+@app.post("/debug")
+@app.get("/debug")
+async def debug_endpoint(request: Request):
+    """Debug endpoint to check headers and authentication"""
+    headers = dict(request.headers)
+    
+    # Get token info
+    auth_header = request.headers.get("authorization", "")
+    token = None
+    token_info = "No token provided"
+    
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        token_info = f"Bearer token: {token[:20]}...{token[-10:] if len(token) > 30 else token}"
+    elif auth_header.startswith("github_pat_"):
+        token = auth_header
+        token_info = f"Direct token: {token[:20]}...{token[-10:] if len(token) > 30 else token}"
+    elif auth_header:
+        token_info = f"Unknown auth format: {auth_header[:20]}..."
+    
+    # Test GitHub if token provided
+    github_status = "No token to test"
+    if token:
+        try:
+            os.environ["GITHUB_TOKEN"] = token
+            client = get_github_client(token)
+            user = client.get_user()
+            github_status = f"✅ Valid - User: {user.login}"
+        except Exception as e:
+            github_status = f"❌ Invalid - Error: {str(e)}"
+    
+    return {
+        "headers": headers,
+        "authorization": token_info,
+        "github_auth": github_status,
+        "env_token": "✅ Set" if os.getenv("GITHUB_TOKEN") else "❌ Not set",
+        "timestamp": asyncio.get_event_loop().time()
     }
 
 @app.get("/mcp/tools")
