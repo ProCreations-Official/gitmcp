@@ -341,12 +341,28 @@ async def mcp_http_handler(request: Request):
         }
 
 @app.get("/mcp/sse")
-async def mcp_sse_handler(user=Depends(get_current_user)):
+async def mcp_sse_handler(request: Request):
     """Handle MCP requests via Server-Sent Events (SSE)"""
+    
+    # Try to get user info
+    token = request.headers.get("authorization")
+    if token and token.startswith("Bearer "):
+        token = token[7:]
+    elif not token:
+        token = os.getenv("GITHUB_TOKEN")
+    
+    user_info = "anonymous"
+    if token:
+        try:
+            client = get_github_client(token)
+            user = client.get_user()
+            user_info = user.login
+        except:
+            pass
     
     async def event_stream():
         # Send initial connection message
-        yield f"data: {json.dumps({'type': 'connection', 'status': 'connected', 'user': user['username']})}\n\n"
+        yield f"data: {json.dumps({'type': 'connection', 'status': 'connected', 'user': user_info})}\n\n"
         
         # Keep connection alive
         while True:
