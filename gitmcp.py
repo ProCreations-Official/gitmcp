@@ -1062,6 +1062,126 @@ def move_files_batch(owner: str, repo_name: str, moves: List[Dict[str, str]],
         return {"error": f"Failed to batch move files: {str(e)}"}
 
 @mcp.tool()
+def rename_file(owner: str, repo_name: str, file_path: str, new_name: str,
+                commit_message: str = None, branch: str = "main") -> Dict[str, Any]:
+    """
+    Rename a file in a GitHub repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        file_path: Current path of the file to rename
+        new_name: New name for the file (just the filename, not the full path)
+        commit_message: Commit message (optional, auto-generated if not provided)
+        branch: Branch to rename file on (default: main)
+    
+    Returns:
+        Rename operation result
+    """
+    client = init_github_client()
+    repo = client.get_repo(f"{owner}/{repo_name}")
+    
+    try:
+        # Extract directory and current filename
+        if "/" in file_path:
+            directory = "/".join(file_path.split("/")[:-1])
+            current_name = file_path.split("/")[-1]
+            new_path = f"{directory}/{new_name}"
+        else:
+            # File is in root directory
+            current_name = file_path
+            new_path = new_name
+        
+        # Auto-generate commit message if not provided
+        if not commit_message:
+            commit_message = f"Rename {current_name} to {new_name}"
+        
+        # Check if new name is the same as current name
+        if current_name == new_name:
+            return {"error": "New name is the same as current name"}
+        
+        # Get the source file content
+        source_file = repo.get_contents(file_path, ref=branch)
+        
+        # Decode content if it's base64 encoded
+        if source_file.encoding == "base64":
+            content = base64.b64decode(source_file.content).decode('utf-8')
+        else:
+            content = source_file.content
+        
+        # Check if destination already exists
+        try:
+            existing_dest = repo.get_contents(new_path, ref=branch)
+            return {"error": f"A file named '{new_name}' already exists in this location"}
+        except GithubException:
+            # Good, destination doesn't exist
+            pass
+        
+        # Get the latest commit for batch operation
+        ref = repo.get_git_ref(f"heads/{branch}")
+        latest_commit = repo.get_git_commit(ref.object.sha)
+        
+        # Create blob for the renamed file
+        blob = repo.create_git_blob(content, "utf-8")
+        
+        # Get current tree and build new tree
+        tree_elements = []
+        
+        # Get all current files except the source file
+        def get_all_files(path=""):
+            """Recursively get all files in the repo"""
+            try:
+                contents = repo.get_contents(path, ref=branch)
+                if not isinstance(contents, list):
+                    contents = [contents]
+                
+                for content_item in contents:
+                    if content_item.type == "dir":
+                        get_all_files(content_item.path)
+                    elif content_item.path != file_path:  # Exclude source file
+                        tree_elements.append({
+                            "path": content_item.path,
+                            "mode": "100644",
+                            "type": "blob",
+                            "sha": content_item.sha
+                        })
+            except:
+                pass
+        
+        get_all_files()
+        
+        # Add the file with the new name
+        tree_elements.append({
+            "path": new_path,
+            "mode": "100644",
+            "type": "blob",
+            "sha": blob.sha
+        })
+        
+        # Create tree with the renamed file
+        tree = repo.create_git_tree(tree_elements)
+        
+        # Create commit
+        commit = repo.create_git_commit(commit_message, tree, [latest_commit])
+        
+        # Update reference
+        ref.edit(commit.sha)
+        
+        return {
+            "action": "file_renamed",
+            "old_path": file_path,
+            "new_path": new_path,
+            "old_name": current_name,
+            "new_name": new_name,
+            "commit_sha": commit.sha,
+            "commit_message": commit_message,
+            "branch": branch
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to rename file: {str(e)}"}
+
+@mcp.tool()
 def update_repo_settings(owner: str, repo_name: str, new_name: str = None, 
                         private: bool = None, description: str = None,
                         homepage: str = None, has_issues: bool = None,
