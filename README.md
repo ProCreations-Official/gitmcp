@@ -61,9 +61,17 @@ This GitHub MCP server provides the following capabilities:
 - **Review Tools**: Submit approvals, request changes, add line-specific comments
 - **Auto-merge**: Enable auto-merge for PRs when requirements are met
 
-#### Traditional Git Operations  
-- **Pull Requests**: Create and manage pull requests (enhanced with cross-repo support)
-- **Local Git Integration**: Clone repos, sync with remotes, setup local repositories
+#### 🎯 GitHub Issues Management (NEW!)
+- **Create Issues**: `create_issue` - Create issues with labels, assignees, milestones
+- **List Issues**: `list_issues` - Filter by state, labels, assignees, creators
+- **Issue Details**: `get_issue_details` - Get complete issue info including comments and events
+- **Comment on Issues**: `add_issue_comment` - Add comments to any issue
+- **Update Issues**: `update_issue` - Change title, body, state, labels, assignees
+- **Close Issues**: `close_issue` - Close issues with optional closing comment
+- **Label Management**: `add_issue_labels`, `remove_issue_labels` - Manage issue labels
+- **Assignment**: `assign_issue`, `unassign_issue` - Assign/unassign users to issues
+- **Label Operations**: `list_repository_labels`, `create_repository_label` - Manage repo labels
+- **Search Issues**: `search_repository_issues` - Advanced issue search with filters
 
 ### 📁 Resources (Context for AI)
 - Repository metadata and structure
