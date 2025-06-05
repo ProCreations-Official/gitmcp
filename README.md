@@ -209,6 +209,27 @@ Once configured, you can interact with GitHub through your AI assistant:
 - "Create a pull request for the feature branch"
 - "Create a new branch called 'feature/auth-system'"
 
+### 🚀 Enhanced Open Source Contribution Workflows
+
+#### Smart Fork Setup
+- \"Fork the 'streamlit-ollama-llm' repository and create a 'feature/enhanced-ui' branch for my contributions\"
+- \"Set me up to contribute to 'microsoft/vscode' - fork it and create a 'fix/memory-leak' branch\"
+
+#### Complete Contribution Workflow  
+- \"Complete contribution to 'facebook/react': fork it, create 'feature/new-hook' branch, and create a PR with my changes\"
+- \"I want to contribute chat history and dark mode to 'romilandc/streamlit-ollama-llm' - handle the entire workflow\"
+
+#### Cross-Repository Pull Requests
+- \"Create a PR from my fork 'myusername/awesome-project' feature branch to the upstream 'original/awesome-project' main branch\"
+- \"Submit my 'bug-fix' branch from my fork to the original repository as a pull request\"
+
+### Collaboration & PR Management
+- \"Add a comment to PR #15 saying the changes look good\"
+- \"Submit an approval review for pull request #23 with the comment 'LGTM, great work!'\"
+- \"Request 'maintainer1' and 'maintainer2' as reviewers for PR #42\"
+- \"Update PR #18 title to 'Fix: Resolve memory leak in data processing'\"
+- \"Enable auto-merge for PR #7 using squash method\"
+
 ## Available Tools
 
 ### Repository Tools
