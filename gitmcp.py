@@ -2594,6 +2594,621 @@ def auto_merge_pull_request(owner: str, repo_name: str, pr_number: int,
     except GithubException as e:
         return {"error": f"Failed to enable auto-merge: {str(e)}"}
 
+@mcp.tool()
+def create_issue(owner: str, repo_name: str, title: str, body: str = "",
+                labels: List[str] = None, assignees: List[str] = None,
+                milestone: int = None) -> Dict[str, Any]:
+    """
+    Create a new issue in a repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        title: Issue title
+        body: Issue description/body (optional)
+        labels: List of label names to apply (optional)
+        assignees: List of usernames to assign (optional)
+        milestone: Milestone number to assign (optional)
+    
+    Returns:
+        Created issue information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        
+        # Create the issue
+        issue = repo.create_issue(
+            title=title,
+            body=body,
+            labels=labels or [],
+            assignees=assignees or [],
+            milestone=repo.get_milestone(milestone) if milestone else None
+        )
+        
+        return {
+            "action": "issue_created",
+            "issue_number": issue.number,
+            "title": issue.title,
+            "url": issue.html_url,
+            "state": issue.state,
+            "author": issue.user.login,
+            "labels": [label.name for label in issue.labels],
+            "assignees": [assignee.login for assignee in issue.assignees],
+            "created_at": issue.created_at.isoformat()
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to create issue: {str(e)}"}
+
+@mcp.tool()
+def list_issues(owner: str, repo_name: str, state: str = "open", 
+               labels: List[str] = None, assignee: str = None,
+               creator: str = None, limit: int = 20) -> Dict[str, Any]:
+    """
+    List issues in a repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        state: Issue state ("open", "closed", "all")
+        labels: Filter by label names (optional)
+        assignee: Filter by assignee username (optional)  
+        creator: Filter by creator username (optional)
+        limit: Maximum number of issues to return (default: 20)
+    
+    Returns:
+        List of issues with details
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        
+        # Build filter parameters
+        kwargs = {"state": state}
+        if labels:
+            kwargs["labels"] = labels
+        if assignee:
+            kwargs["assignee"] = assignee
+        if creator:
+            kwargs["creator"] = creator
+        
+        issues = []
+        for issue in repo.get_issues(**kwargs)[:limit]:
+            # Skip pull requests (GitHub API returns PRs as issues)
+            if not issue.pull_request:
+                issues.append({
+                    "number": issue.number,
+                    "title": issue.title,
+                    "state": issue.state,
+                    "author": issue.user.login,
+                    "labels": [label.name for label in issue.labels],
+                    "assignees": [assignee.login for assignee in issue.assignees],
+                    "comments": issue.comments,
+                    "created_at": issue.created_at.isoformat(),
+                    "updated_at": issue.updated_at.isoformat(),
+                    "url": issue.html_url
+                })
+        
+        return {
+            "repository": f"{owner}/{repo_name}",
+            "state": state,
+            "total_count": len(issues),
+            "issues": issues
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to list issues: {str(e)}"}
+
+@mcp.tool()
+def get_issue_details(owner: str, repo_name: str, issue_number: int) -> Dict[str, Any]:
+    """
+    Get detailed information about a specific issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number
+    
+    Returns:
+        Detailed issue information including comments
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        # Get comments
+        comments = []
+        for comment in issue.get_comments():
+            comments.append({
+                "id": comment.id,
+                "author": comment.user.login,
+                "body": comment.body,
+                "created_at": comment.created_at.isoformat(),
+                "updated_at": comment.updated_at.isoformat(),
+                "url": comment.html_url
+            })
+        
+        # Get events (optional, for activity tracking)
+        events = []
+        for event in issue.get_events()[:10]:  # Limit to last 10 events
+            events.append({
+                "event": event.event,
+                "actor": event.actor.login if event.actor else None,
+                "created_at": event.created_at.isoformat()
+            })
+        
+        return {
+            "number": issue.number,
+            "title": issue.title,
+            "body": issue.body,
+            "state": issue.state,
+            "author": issue.user.login,
+            "labels": [{
+                "name": label.name,
+                "color": label.color,
+                "description": label.description
+            } for label in issue.labels],
+            "assignees": [assignee.login for assignee in issue.assignees],
+            "milestone": {
+                "title": issue.milestone.title,
+                "number": issue.milestone.number,
+                "due_on": issue.milestone.due_on.isoformat() if issue.milestone.due_on else None
+            } if issue.milestone else None,
+            "comments_count": issue.comments,
+            "comments": comments,
+            "events": events,
+            "created_at": issue.created_at.isoformat(),
+            "updated_at": issue.updated_at.isoformat(),
+            "closed_at": issue.closed_at.isoformat() if issue.closed_at else None,
+            "url": issue.html_url
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to get issue details: {str(e)}"}
+
+@mcp.tool()
+def add_issue_comment(owner: str, repo_name: str, issue_number: int,
+                     comment: str) -> Dict[str, Any]:
+    """
+    Add a comment to an issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number
+        comment: Comment text to add
+    
+    Returns:
+        Comment creation result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        comment_obj = issue.create_comment(comment)
+        
+        return {
+            "action": "comment_added",
+            "issue_number": issue_number,
+            "comment_id": comment_obj.id,
+            "comment_url": comment_obj.html_url,
+            "author": comment_obj.user.login,
+            "created_at": comment_obj.created_at.isoformat()
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to add comment: {str(e)}"}
+
+@mcp.tool()
+def update_issue(owner: str, repo_name: str, issue_number: int,
+                title: str = None, body: str = None, state: str = None,
+                labels: List[str] = None, assignees: List[str] = None,
+                milestone: int = None) -> Dict[str, Any]:
+    """
+    Update an existing issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number to update
+        title: New title (optional)
+        body: New body/description (optional)
+        state: New state - "open" or "closed" (optional)
+        labels: New list of label names (optional)
+        assignees: New list of assignee usernames (optional)
+        milestone: New milestone number (optional, use 0 to remove)
+    
+    Returns:
+        Updated issue information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        # Prepare update parameters
+        update_params = {}
+        changes_made = []
+        
+        if title is not None and title != issue.title:
+            update_params["title"] = title
+            changes_made.append(f"title: '{issue.title}' → '{title}'")
+        
+        if body is not None and body != issue.body:
+            update_params["body"] = body
+            changes_made.append("body: updated")
+        
+        if state is not None and state != issue.state:
+            update_params["state"] = state
+            changes_made.append(f"state: {issue.state} → {state}")
+        
+        if labels is not None:
+            current_labels = [label.name for label in issue.labels]
+            if labels != current_labels:
+                update_params["labels"] = labels
+                changes_made.append(f"labels: {current_labels} → {labels}")
+        
+        if assignees is not None:
+            current_assignees = [assignee.login for assignee in issue.assignees]
+            if assignees != current_assignees:
+                update_params["assignees"] = assignees
+                changes_made.append(f"assignees: {current_assignees} → {assignees}")
+        
+        if milestone is not None:
+            if milestone == 0:
+                update_params["milestone"] = None
+                changes_made.append("milestone: removed")
+            else:
+                milestone_obj = repo.get_milestone(milestone)
+                update_params["milestone"] = milestone_obj
+                changes_made.append(f"milestone: set to {milestone_obj.title}")
+        
+        if not update_params:
+            return {"message": "No changes needed - all parameters are already as specified"}
+        
+        # Update the issue
+        issue.edit(**update_params)
+        
+        return {
+            "action": "issue_updated",
+            "issue_number": issue_number,
+            "changes_made": changes_made,
+            "title": issue.title,
+            "state": issue.state,
+            "url": issue.html_url
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to update issue: {str(e)}"}
+
+@mcp.tool()
+def close_issue(owner: str, repo_name: str, issue_number: int,
+               comment: str = None) -> Dict[str, Any]:
+    """
+    Close an issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number to close
+        comment: Optional comment to add when closing
+    
+    Returns:
+        Close result information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        if issue.state == "closed":
+            return {"message": f"Issue #{issue_number} is already closed"}
+        
+        # Add comment if provided
+        if comment:
+            issue.create_comment(comment)
+        
+        # Close the issue
+        issue.edit(state="closed")
+        
+        return {
+            "action": "issue_closed",
+            "issue_number": issue_number,
+            "title": issue.title,
+            "url": issue.html_url,
+            "comment_added": bool(comment)
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to close issue: {str(e)}"}
+
+@mcp.tool()
+def add_issue_labels(owner: str, repo_name: str, issue_number: int,
+                    labels: List[str]) -> Dict[str, Any]:
+    """
+    Add labels to an issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number
+        labels: List of label names to add
+    
+    Returns:
+        Label addition result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        # Add labels
+        issue.add_to_labels(*labels)
+        
+        # Get updated issue to return current labels
+        updated_issue = repo.get_issue(issue_number)
+        current_labels = [label.name for label in updated_issue.labels]
+        
+        return {
+            "action": "labels_added",
+            "issue_number": issue_number,
+            "labels_added": labels,
+            "current_labels": current_labels
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to add labels: {str(e)}"}
+
+@mcp.tool()
+def remove_issue_labels(owner: str, repo_name: str, issue_number: int,
+                       labels: List[str]) -> Dict[str, Any]:
+    """
+    Remove labels from an issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number
+        labels: List of label names to remove
+    
+    Returns:
+        Label removal result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        # Remove labels
+        issue.remove_from_labels(*labels)
+        
+        # Get updated issue to return current labels
+        updated_issue = repo.get_issue(issue_number)
+        current_labels = [label.name for label in updated_issue.labels]
+        
+        return {
+            "action": "labels_removed",
+            "issue_number": issue_number,
+            "labels_removed": labels,
+            "current_labels": current_labels
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to remove labels: {str(e)}"}
+
+@mcp.tool()
+def assign_issue(owner: str, repo_name: str, issue_number: int,
+                assignees: List[str]) -> Dict[str, Any]:
+    """
+    Assign users to an issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number
+        assignees: List of usernames to assign
+    
+    Returns:
+        Assignment result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        # Add assignees
+        issue.add_to_assignees(*assignees)
+        
+        # Get updated issue to return current assignees
+        updated_issue = repo.get_issue(issue_number)
+        current_assignees = [assignee.login for assignee in updated_issue.assignees]
+        
+        return {
+            "action": "users_assigned",
+            "issue_number": issue_number,
+            "assignees_added": assignees,
+            "current_assignees": current_assignees
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to assign users: {str(e)}"}
+
+@mcp.tool()
+def unassign_issue(owner: str, repo_name: str, issue_number: int,
+                  assignees: List[str]) -> Dict[str, Any]:
+    """
+    Unassign users from an issue
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        issue_number: Issue number
+        assignees: List of usernames to unassign
+    
+    Returns:
+        Unassignment result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        issue = repo.get_issue(issue_number)
+        
+        # Remove assignees
+        issue.remove_from_assignees(*assignees)
+        
+        # Get updated issue to return current assignees
+        updated_issue = repo.get_issue(issue_number)
+        current_assignees = [assignee.login for assignee in updated_issue.assignees]
+        
+        return {
+            "action": "users_unassigned",
+            "issue_number": issue_number,
+            "assignees_removed": assignees,
+            "current_assignees": current_assignees
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to unassign users: {str(e)}"}
+
+@mcp.tool()
+def list_repository_labels(owner: str, repo_name: str) -> Dict[str, Any]:
+    """
+    List all labels available in a repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+    
+    Returns:
+        List of repository labels
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        
+        labels = []
+        for label in repo.get_labels():
+            labels.append({
+                "name": label.name,
+                "color": label.color,
+                "description": label.description,
+                "url": label.url
+            })
+        
+        return {
+            "repository": f"{owner}/{repo_name}",
+            "total_labels": len(labels),
+            "labels": labels
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to list labels: {str(e)}"}
+
+@mcp.tool()
+def create_repository_label(owner: str, repo_name: str, name: str,
+                           color: str, description: str = "") -> Dict[str, Any]:
+    """
+    Create a new label in a repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        name: Label name
+        color: Label color (hex code without #, e.g., "ff0000")
+        description: Label description (optional)
+    
+    Returns:
+        Created label information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        
+        label = repo.create_label(
+            name=name,
+            color=color,
+            description=description
+        )
+        
+        return {
+            "action": "label_created",
+            "name": label.name,
+            "color": label.color,
+            "description": label.description,
+            "url": label.url
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to create label: {str(e)}"}
+
+@mcp.tool()
+def search_repository_issues(owner: str, repo_name: str, query: str,
+                           state: str = "all", limit: int = 20) -> Dict[str, Any]:
+    """
+    Search for issues in a repository using GitHub's search
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        query: Search query (e.g., "bug", "help wanted", etc.)
+        state: Issue state filter ("open", "closed", "all")
+        limit: Maximum number of results (default: 20)
+    
+    Returns:
+        Search results with matching issues
+    """
+    client = init_github_client()
+    
+    try:
+        # Build search query
+        search_query = f"{query} repo:{owner}/{repo_name} is:issue"
+        if state != "all":
+            search_query += f" is:{state}"
+        
+        results = client.search_issues(search_query)
+        
+        issues = []
+        for issue in results[:limit]:
+            issues.append({
+                "number": issue.number,
+                "title": issue.title,
+                "state": issue.state,
+                "author": issue.user.login,
+                "labels": [label.name for label in issue.labels],
+                "assignees": [assignee.login for assignee in issue.assignees],
+                "comments": issue.comments,
+                "score": issue.score,
+                "created_at": issue.created_at.isoformat(),
+                "updated_at": issue.updated_at.isoformat(),
+                "url": issue.html_url
+            })
+        
+        return {
+            "query": query,
+            "repository": f"{owner}/{repo_name}",
+            "total_count": results.totalCount,
+            "returned_count": len(issues),
+            "issues": issues
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to search issues: {str(e)}"}
+
 if __name__ == "__main__":
     # Run the MCP server
     mcp.run()
