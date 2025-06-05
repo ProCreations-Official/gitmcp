@@ -31,18 +31,33 @@ See [INTEGRATION.md](INTEGRATION.md) for detailed setup instructions.
 This GitHub MCP server provides the following capabilities:
 
 ### 🔧 Tools (AI-controlled actions)
+
+#### Core Repository Management
 - **Repository Management**: Create, list, and delete repositories
 - **File Operations**: Read, write, edit, delete files and manage directories
 - **Folder Management**: Create and delete folders with all contents
 - **Branch Management**: Create branches and manage repository structure
-- **Pull Requests**: Create and manage pull requests
 - **Code Search**: Search for code across repositories
 - **Batch Operations**: Update or delete multiple files in a single commit
+
+#### 🚀 Enhanced Fork & PR Workflows (NEW!)
+- **Smart Forking**: `fork_and_setup_contribution` - Fork repo + create feature branch in one step
+- **Cross-Repo PRs**: `create_cross_repo_pull_request` - Create PRs from forks to upstream repos
+- **Complete Workflow**: `complete_fork_to_pr_workflow` - Ultimate function for full contribution workflow
+- **PR Management**: Update PR titles, descriptions, and status
+- **PR Collaboration**: Add comments, submit reviews, request reviewers
+- **Review Tools**: Submit approvals, request changes, add line-specific comments
+- **Auto-merge**: Enable auto-merge for PRs when requirements are met
+
+#### Traditional Git Operations  
+- **Pull Requests**: Create and manage pull requests (enhanced with cross-repo support)
+- **Local Git Integration**: Clone repos, sync with remotes, setup local repositories
 
 ### 📁 Resources (Context for AI)
 - Repository metadata and structure
 - File contents and directory trees
 - Commit history and branch information
+- Pull request details and review status
 
 ## Installation
 
