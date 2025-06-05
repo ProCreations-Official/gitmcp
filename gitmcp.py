@@ -542,8 +542,385 @@ def search_code(owner: str, repo_name: str, query: str,
         return {"error": f"Failed to search code: {str(e)}"}
 
 @mcp.tool()
+def fork_repository(owner: str, repo_name: str, organization: str = None) -> Dict[str, Any]:
+    """
+    Fork a repository to your account or organization
+    
+    Args:
+        owner: Repository owner (username or organization)
+        repo_name: Repository name to fork
+        organization: Optional organization to fork to (defaults to your account)
+    
+    Returns:
+        Forked repository information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        
+        # Fork the repository
+        if organization:
+            # Fork to organization
+            org = client.get_organization(organization)
+            forked_repo = org.create_fork(repo)
+        else:
+            # Fork to personal account
+            user = client.get_user()
+            forked_repo = user.create_fork(repo)
+        
+        return {
+            "action": "repository_forked",
+            "original": {
+                "name": repo.name,
+                "full_name": repo.full_name,
+                "owner": repo.owner.login,
+                "url": repo.html_url
+            },
+            "fork": {
+                "name": forked_repo.name,
+                "full_name": forked_repo.full_name,
+                "owner": forked_repo.owner.login,
+                "url": forked_repo.html_url,
+                "clone_url": forked_repo.clone_url,
+                "ssh_url": forked_repo.ssh_url
+            },
+            "parent_url": forked_repo.parent.html_url if forked_repo.parent else None
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to fork repository: {str(e)}"}
+
+@mcp.tool()
+def get_repository_info(owner: str, repo_name: str) -> Dict[str, Any]:
+    """
+    Get detailed information about a repository
+    
+    Args:
+        owner: Repository owner (username or organization)
+        repo_name: Repository name
+    
+    Returns:
+        Detailed repository information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        
+        # Get additional info
+        languages = repo.get_languages()
+        topics = repo.get_topics()
+        collaborators_count = repo.get_collaborators().totalCount if repo.permissions.admin else None
+        
+        repo_info = {
+            "name": repo.name,
+            "full_name": repo.full_name,
+            "description": repo.description,
+            "private": repo.private,
+            "fork": repo.fork,
+            "url": repo.html_url,
+            "clone_url": repo.clone_url,
+            "ssh_url": repo.ssh_url,
+            "size": repo.size,
+            "language": repo.language,
+            "languages": languages,
+            "topics": topics,
+            "stargazers_count": repo.stargazers_count,
+            "watchers_count": repo.watchers_count,
+            "forks_count": repo.forks_count,
+            "open_issues_count": repo.open_issues_count,
+            "default_branch": repo.default_branch,
+            "created_at": repo.created_at.isoformat(),
+            "updated_at": repo.updated_at.isoformat(),
+            "pushed_at": repo.pushed_at.isoformat() if repo.pushed_at else None,
+            "owner": {
+                "login": repo.owner.login,
+                "type": repo.owner.type,
+                "url": repo.owner.html_url
+            },
+            "permissions": {
+                "admin": repo.permissions.admin,
+                "maintain": repo.permissions.maintain,
+                "push": repo.permissions.push,
+                "triage": repo.permissions.triage,
+                "pull": repo.permissions.pull
+            }
+        }
+        
+        # Add parent info if this is a fork
+        if repo.fork and repo.parent:
+            repo_info["parent"] = {
+                "name": repo.parent.name,
+                "full_name": repo.parent.full_name,
+                "owner": repo.parent.owner.login,
+                "url": repo.parent.html_url
+            }
+        
+        # Add source info if this is a fork
+        if repo.fork and repo.source:
+            repo_info["source"] = {
+                "name": repo.source.name,
+                "full_name": repo.source.full_name,
+                "owner": repo.source.owner.login,
+                "url": repo.source.html_url
+            }
+        
+        # Add collaborators count if accessible
+        if collaborators_count is not None:
+            repo_info["collaborators_count"] = collaborators_count
+        
+        return repo_info
+        
+    except GithubException as e:
+        return {"error": f"Failed to get repository info: {str(e)}"}
+
+@mcp.tool()
+def list_user_repos(username: str, repo_type: str = "all", limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    List repositories for any user or organization
+    
+    Args:
+        username: Username or organization name
+        repo_type: Type of repos to list ("all", "owner", "public", "private", "member") 
+        limit: Maximum number of repos to return (default: 10)
+    
+    Returns:
+        List of repository information
+    """
+    client = init_github_client()
+    repos = []
+    
+    try:
+        # Get user or organization
+        try:
+            user = client.get_user(username)
+            user_type = "user"
+        except GithubException:
+            try:
+                user = client.get_organization(username)
+                user_type = "organization"
+            except GithubException:
+                return {"error": f"User or organization '{username}' not found"}
+        
+        # Get repositories based on type
+        if user_type == "organization":
+            repo_list = user.get_repos(type=repo_type)
+        else:
+            repo_list = user.get_repos(type=repo_type)
+        
+        for repo in repo_list[:limit]:
+            repos.append({
+                "name": repo.name,
+                "full_name": repo.full_name,
+                "description": repo.description,
+                "language": repo.language,
+                "private": repo.private,
+                "fork": repo.fork,
+                "url": repo.html_url,
+                "clone_url": repo.clone_url,
+                "stars": repo.stargazers_count,
+                "forks": repo.forks_count,
+                "updated_at": repo.updated_at.isoformat() if repo.updated_at else None
+            })
+        
+        return {
+            "username": username,
+            "user_type": user_type,
+            "repo_type": repo_type,
+            "repositories": repos
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to list repositories: {str(e)}"}
+
+@mcp.tool()
+def list_branches(owner: str, repo_name: str, limit: int = 20) -> Dict[str, Any]:
+    """
+    List all branches in a repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        limit: Maximum number of branches to return (default: 20)
+    
+    Returns:
+        List of branch information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        branches = []
+        
+        for branch in repo.get_branches()[:limit]:
+            branches.append({
+                "name": branch.name,
+                "sha": branch.commit.sha,
+                "protected": branch.protected,
+                "commit": {
+                    "sha": branch.commit.sha,
+                    "message": branch.commit.commit.message,
+                    "author": branch.commit.commit.author.name,
+                    "date": branch.commit.commit.author.date.isoformat()
+                }
+            })
+        
+        return {
+            "repository": f"{owner}/{repo_name}",
+            "default_branch": repo.default_branch,
+            "total_branches": len(branches),
+            "branches": branches
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to list branches: {str(e)}"}
+
+@mcp.tool()
+def list_pull_requests(owner: str, repo_name: str, state: str = "open", 
+                      limit: int = 10) -> Dict[str, Any]:
+    """
+    List pull requests in a repository
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        state: PR state ("open", "closed", "all")
+        limit: Maximum number of PRs to return (default: 10)
+    
+    Returns:
+        List of pull request information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pull_requests = []
+        
+        for pr in repo.get_pulls(state=state)[:limit]:
+            pull_requests.append({
+                "number": pr.number,
+                "title": pr.title,
+                "state": pr.state,
+                "user": pr.user.login,
+                "created_at": pr.created_at.isoformat(),
+                "updated_at": pr.updated_at.isoformat(),
+                "url": pr.html_url,
+                "head": {
+                    "branch": pr.head.ref,
+                    "sha": pr.head.sha,
+                    "repo": pr.head.repo.full_name if pr.head.repo else None
+                },
+                "base": {
+                    "branch": pr.base.ref,
+                    "sha": pr.base.sha,
+                    "repo": pr.base.repo.full_name
+                },
+                "mergeable": pr.mergeable,
+                "draft": pr.draft,
+                "labels": [label.name for label in pr.labels]
+            })
+        
+        return {
+            "repository": f"{owner}/{repo_name}",
+            "state": state,
+            "total_count": len(pull_requests),
+            "pull_requests": pull_requests
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to list pull requests: {str(e)}"}
+
+@mcp.tool()
+def get_pull_request_details(owner: str, repo_name: str, pr_number: int) -> Dict[str, Any]:
+    """
+    Get detailed information about a specific pull request
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number
+    
+    Returns:
+        Detailed pull request information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        # Get additional details
+        files_changed = []
+        for file in pr.get_files():
+            files_changed.append({
+                "filename": file.filename,
+                "status": file.status,
+                "additions": file.additions,
+                "deletions": file.deletions,
+                "changes": file.changes,
+                "patch": file.patch[:1000] if file.patch else None  # Limit patch size
+            })
+        
+        reviews = []
+        for review in pr.get_reviews():
+            reviews.append({
+                "id": review.id,
+                "user": review.user.login,
+                "state": review.state,
+                "body": review.body,
+                "submitted_at": review.submitted_at.isoformat() if review.submitted_at else None
+            })
+        
+        return {
+            "number": pr.number,
+            "title": pr.title,
+            "body": pr.body,
+            "state": pr.state,
+            "user": {
+                "login": pr.user.login,
+                "url": pr.user.html_url
+            },
+            "created_at": pr.created_at.isoformat(),
+            "updated_at": pr.updated_at.isoformat(),
+            "closed_at": pr.closed_at.isoformat() if pr.closed_at else None,
+            "merged_at": pr.merged_at.isoformat() if pr.merged_at else None,
+            "url": pr.html_url,
+            "head": {
+                "branch": pr.head.ref,
+                "sha": pr.head.sha,
+                "repo": pr.head.repo.full_name if pr.head.repo else None,
+                "user": pr.head.repo.owner.login if pr.head.repo else None
+            },
+            "base": {
+                "branch": pr.base.ref,
+                "sha": pr.base.sha,
+                "repo": pr.base.repo.full_name
+            },
+            "mergeable": pr.mergeable,
+            "mergeable_state": pr.mergeable_state,
+            "merged": pr.merged,
+            "draft": pr.draft,
+            "additions": pr.additions,
+            "deletions": pr.deletions,
+            "changed_files": pr.changed_files,
+            "commits": pr.commits,
+            "comments": pr.comments,
+            "review_comments": pr.review_comments,
+            "labels": [{"name": label.name, "color": label.color} for label in pr.labels],
+            "assignees": [assignee.login for assignee in pr.assignees],
+            "requested_reviewers": [reviewer.login for reviewer in pr.requested_reviewers],
+            "files_changed": files_changed,
+            "reviews": reviews
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to get pull request details: {str(e)}"}
+
+@mcp.tool()
 def create_pull_request(owner: str, repo_name: str, title: str, body: str,
-                       head_branch: str, base_branch: str = "main") -> Dict[str, Any]:
+                       head_branch: str, base_branch: str = "main",
+                       head_repo: str = None) -> Dict[str, Any]:
     """
     Create a pull request
     
