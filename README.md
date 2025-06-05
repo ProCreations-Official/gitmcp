@@ -2,8 +2,6 @@
 
 A Model Context Protocol (MCP) server that provides comprehensive GitHub integration for AI assistants like Claude, enabling seamless repository management, code browsing, and collaborative workflows.
 
-🎉 **NEW**: Now supports **Anthropic Integrations** for remote MCP connectivity! Connect Claude directly to your GitHub repositories through the cloud.
-
 ## 🚀 Enhanced Open Source Contribution Workflows
 
 GitMCP now includes **game-changing improvements** for open source contributions! These new features solve the common problems that make contributing to GitHub projects cumbersome:
