@@ -285,6 +285,21 @@ Once configured, you can interact with GitHub through your AI assistant:
 - `list_pull_request_reviews` - List all reviews for a PR
 - `auto_merge_pull_request` - Enable auto-merge when requirements are met
 
+### 🎯 GitHub Issues Tools (NEW!)
+- `create_issue` - Create issues with labels, assignees, milestones
+- `list_issues` - List issues with filtering by state, labels, assignee, creator
+- `get_issue_details` - Get detailed issue information including comments and events
+- `add_issue_comment` - Add comments to issues
+- `update_issue` - Update issue title, body, state, labels, assignees, milestone
+- `close_issue` - Close issues with optional closing comment
+- `add_issue_labels` - Add labels to issues
+- `remove_issue_labels` - Remove labels from issues
+- `assign_issue` - Assign users to issues
+- `unassign_issue` - Remove user assignments from issues
+- `list_repository_labels` - List all labels in a repository
+- `create_repository_label` - Create new labels with custom colors
+- `search_repository_issues` - Search issues with advanced filtering
+
 ### Traditional Branch & PR Tools
 - `create_branch` - Create new branches
 - `create_pull_request` - Create pull requests (same-repo)
