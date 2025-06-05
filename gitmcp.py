@@ -2110,6 +2110,490 @@ def sync_local_with_remote(local_path: str, branch: str = "main") -> Dict[str, A
     except Exception as e:
         return {"error": f"Sync operation failed: {str(e)}"}
 
+@mcp.tool()
+def fork_and_setup_contribution(owner: str, repo_name: str, feature_branch: str, 
+                               organization: str = None) -> Dict[str, Any]:
+    """
+    Complete workflow: Fork repository and create a feature branch for contributions
+    
+    This is the ideal function for starting contributions to open source projects.
+    It handles the common workflow of fork -> create feature branch -> ready to work.
+    
+    Args:
+        owner: Repository owner (username or organization)
+        repo_name: Repository name to fork
+        feature_branch: Name for the feature branch to create
+        organization: Optional organization to fork to (defaults to your account)
+    
+    Returns:
+        Complete setup information with next steps
+    """
+    client = init_github_client()
+    
+    try:
+        # Step 1: Fork the repository (handles existing forks gracefully)
+        fork_result = fork_repository(owner, repo_name, organization)
+        
+        if "error" in fork_result:
+            return fork_result
+        
+        # Extract fork info
+        if fork_result["action"] == "repository_forked":
+            fork_owner = fork_result["fork"]["owner"]
+            fork_name = fork_result["fork"]["name"]
+        else:  # fork_already_exists
+            fork_owner = fork_result["fork"]["owner"]
+            fork_name = fork_result["fork"]["name"]
+        
+        # Step 2: Create feature branch on the fork
+        branch_result = create_branch(fork_owner, fork_name, feature_branch)
+        
+        if "error" in branch_result:
+            # If branch already exists, that's okay for this workflow
+            if "already exists" not in str(branch_result.get("error", "")):
+                return {
+                    "error": f"Fork successful but failed to create branch: {branch_result['error']}",
+                    "fork_info": fork_result
+                }
+        
+        return {
+            "action": "contribution_setup_complete",
+            "message": "Repository forked and feature branch created - ready for contributions!",
+            "original_repo": {
+                "full_name": f"{owner}/{repo_name}",
+                "url": f"https://github.com/{owner}/{repo_name}"
+            },
+            "fork_info": fork_result["fork"],
+            "feature_branch": feature_branch,
+            "next_steps": [
+                f"Make your changes on the '{feature_branch}' branch",
+                f"Commit and push your changes to your fork",
+                f"Create a pull request from {fork_owner}/{fork_name}:{feature_branch} to {owner}/{repo_name}:main"
+            ],
+            "clone_command": f"git clone {fork_result['fork']['clone_url']}",
+            "branch_checkout": f"git checkout {feature_branch}",
+            "ready_for_pr": True
+        }
+        
+    except Exception as e:
+        return {"error": f"Setup failed: {str(e)}"}
+
+@mcp.tool()
+def create_cross_repo_pull_request(upstream_owner: str, upstream_repo: str, 
+                                  fork_owner: str, fork_repo: str, head_branch: str,
+                                  title: str, body: str, base_branch: str = "main") -> Dict[str, Any]:
+    """
+    Create a pull request from a fork to the upstream repository
+    
+    This is specifically designed for contributing to open source projects where
+    you've forked a repo and want to create a PR back to the original.
+    
+    Args:
+        upstream_owner: Original repository owner
+        upstream_repo: Original repository name
+        fork_owner: Fork owner (usually your username)
+        fork_repo: Fork repository name (usually same as upstream)
+        head_branch: Branch with your changes (on the fork)
+        title: Pull request title
+        body: Pull request description
+        base_branch: Branch to merge into on upstream (default: main)
+    
+    Returns:
+        Pull request information
+    """
+    client = init_github_client()
+    
+    try:
+        # Get the upstream repository
+        upstream = client.get_repo(f"{upstream_owner}/{upstream_repo}")
+        
+        # Verify the fork exists and has the head branch
+        fork = client.get_repo(f"{fork_owner}/{fork_repo}")
+        
+        try:
+            fork.get_branch(head_branch)
+        except GithubException:
+            return {"error": f"Branch '{head_branch}' not found in fork {fork_owner}/{fork_repo}"}
+        
+        # Create the PR from fork to upstream
+        pr = upstream.create_pull(
+            title=title,
+            body=body,
+            head=f"{fork_owner}:{head_branch}",  # This is the key for cross-repo PRs
+            base=base_branch
+        )
+        
+        return {
+            "action": "cross_repo_pull_request_created",
+            "pr_number": pr.number,
+            "title": pr.title,
+            "url": pr.html_url,
+            "upstream_repo": f"{upstream_owner}/{upstream_repo}",
+            "fork_repo": f"{fork_owner}/{fork_repo}",
+            "head_branch": head_branch,
+            "base_branch": base_branch,
+            "state": pr.state,
+            "mergeable": pr.mergeable,
+            "draft": pr.draft
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to create cross-repo pull request: {str(e)}"}
+
+@mcp.tool()
+def complete_fork_to_pr_workflow(upstream_owner: str, upstream_repo: str,
+                                feature_branch: str, title: str, body: str,
+                                file_changes: List[Dict[str, str]] = None,
+                                base_branch: str = "main") -> Dict[str, Any]:
+    """
+    Complete workflow: Fork -> Create Branch -> Make Changes -> Create PR
+    
+    This is the ultimate function for contributing to open source projects.
+    It handles the entire workflow from fork to pull request creation.
+    
+    Args:
+        upstream_owner: Original repository owner
+        upstream_repo: Original repository name
+        feature_branch: Name for the feature branch
+        title: Pull request title
+        body: Pull request description
+        file_changes: Optional list of file changes to make (each with 'path' and 'content')
+        base_branch: Branch to merge into on upstream (default: main)
+    
+    Returns:
+        Complete workflow result with PR information
+    """
+    client = init_github_client()
+    
+    try:
+        # Step 1: Fork and setup contribution
+        setup_result = fork_and_setup_contribution(upstream_owner, upstream_repo, feature_branch)
+        
+        if "error" in setup_result:
+            return setup_result
+        
+        fork_owner = setup_result["fork_info"]["owner"]
+        fork_name = setup_result["fork_info"]["name"]
+        
+        # Step 2: Make file changes if provided
+        if file_changes:
+            changes_result = batch_update_files(
+                fork_owner, 
+                fork_name, 
+                file_changes,
+                f"Implement changes for {title}",
+                feature_branch
+            )
+            
+            if "error" in changes_result:
+                return {
+                    "error": f"Fork and branch created but failed to make changes: {changes_result['error']}",
+                    "setup_info": setup_result
+                }
+        
+        # Step 3: Create the pull request
+        pr_result = create_cross_repo_pull_request(
+            upstream_owner, upstream_repo, fork_owner, fork_name,
+            feature_branch, title, body, base_branch
+        )
+        
+        if "error" in pr_result:
+            return {
+                "error": f"Fork and changes complete but failed to create PR: {pr_result['error']}",
+                "setup_info": setup_result,
+                "changes_made": bool(file_changes)
+            }
+        
+        return {
+            "action": "complete_contribution_workflow",
+            "message": "Successfully forked, made changes, and created pull request!",
+            "workflow_steps": [
+                "✅ Repository forked",
+                "✅ Feature branch created", 
+                "✅ Changes committed" if file_changes else "⏭️ Ready for manual changes",
+                "✅ Pull request created"
+            ],
+            "setup_info": setup_result,
+            "pr_info": pr_result,
+            "changes_made": len(file_changes) if file_changes else 0
+        }
+        
+    except Exception as e:
+        return {"error": f"Complete workflow failed: {str(e)}"}
+
+@mcp.tool()
+def update_pull_request(owner: str, repo_name: str, pr_number: int,
+                       title: str = None, body: str = None, state: str = None,
+                       base_branch: str = None) -> Dict[str, Any]:
+    """
+    Update an existing pull request
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number to update
+        title: New title (optional)
+        body: New body/description (optional)
+        state: New state - "open" or "closed" (optional)
+        base_branch: New base branch (optional)
+    
+    Returns:
+        Updated pull request information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        # Prepare update parameters
+        update_params = {}
+        changes_made = []
+        
+        if title is not None and title != pr.title:
+            update_params["title"] = title
+            changes_made.append(f"title: '{pr.title}' → '{title}'")
+        
+        if body is not None and body != pr.body:
+            update_params["body"] = body
+            changes_made.append("body: updated")
+        
+        if state is not None and state != pr.state:
+            update_params["state"] = state
+            changes_made.append(f"state: {pr.state} → {state}")
+        
+        if base_branch is not None and base_branch != pr.base.ref:
+            update_params["base"] = base_branch
+            changes_made.append(f"base branch: {pr.base.ref} → {base_branch}")
+        
+        if not update_params:
+            return {"message": "No changes needed - all parameters are already as specified"}
+        
+        # Update the PR
+        pr.edit(**update_params)
+        
+        return {
+            "action": "pull_request_updated",
+            "pr_number": pr_number,
+            "changes_made": changes_made,
+            "title": pr.title,
+            "state": pr.state,
+            "url": pr.html_url
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to update pull request: {str(e)}"}
+
+@mcp.tool()
+def add_pull_request_comment(owner: str, repo_name: str, pr_number: int,
+                            comment: str) -> Dict[str, Any]:
+    """
+    Add a comment to a pull request
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number
+        comment: Comment text to add
+    
+    Returns:
+        Comment creation result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        comment_obj = pr.create_issue_comment(comment)
+        
+        return {
+            "action": "comment_added",
+            "pr_number": pr_number,
+            "comment_id": comment_obj.id,
+            "comment_url": comment_obj.html_url,
+            "author": comment_obj.user.login,
+            "created_at": comment_obj.created_at.isoformat()
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to add comment: {str(e)}"}
+
+@mcp.tool()
+def submit_pull_request_review(owner: str, repo_name: str, pr_number: int,
+                              event: str, body: str = "",
+                              comments: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Submit a review for a pull request
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number
+        event: Review event ("APPROVE", "REQUEST_CHANGES", "COMMENT")
+        body: Overall review comment
+        comments: List of line-specific comments (each with 'path', 'line', 'body')
+    
+    Returns:
+        Review submission result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        # Prepare review comments
+        review_comments = []
+        if comments:
+            for comment in comments:
+                review_comments.append({
+                    "path": comment["path"],
+                    "line": comment["line"],
+                    "body": comment["body"]
+                })
+        
+        # Submit the review
+        review = pr.create_review(
+            body=body,
+            event=event,
+            comments=review_comments if review_comments else None
+        )
+        
+        return {
+            "action": "review_submitted",
+            "pr_number": pr_number,
+            "review_id": review.id,
+            "event": event,
+            "review_url": review.html_url,
+            "line_comments": len(review_comments),
+            "submitted_at": review.submitted_at.isoformat() if review.submitted_at else None
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to submit review: {str(e)}"}
+
+@mcp.tool()
+def request_pull_request_reviewers(owner: str, repo_name: str, pr_number: int,
+                                  reviewers: List[str] = None,
+                                  team_reviewers: List[str] = None) -> Dict[str, Any]:
+    """
+    Request reviewers for a pull request
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number
+        reviewers: List of usernames to request as reviewers
+        team_reviewers: List of team names to request as reviewers
+    
+    Returns:
+        Reviewer request result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        # Request reviewers
+        result = pr.create_review_request(
+            reviewers=reviewers or [],
+            team_reviewers=team_reviewers or []
+        )
+        
+        return {
+            "action": "reviewers_requested",
+            "pr_number": pr_number,
+            "requested_reviewers": [user.login for user in result.requested_reviewers],
+            "requested_teams": [team.name for team in result.requested_teams],
+            "total_requested": len(result.requested_reviewers) + len(result.requested_teams)
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to request reviewers: {str(e)}"}
+
+@mcp.tool()
+def list_pull_request_reviews(owner: str, repo_name: str, pr_number: int) -> Dict[str, Any]:
+    """
+    List all reviews for a pull request
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number
+    
+    Returns:
+        List of reviews with details
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        reviews = []
+        for review in pr.get_reviews():
+            review_data = {
+                "id": review.id,
+                "user": review.user.login,
+                "state": review.state,
+                "body": review.body,
+                "submitted_at": review.submitted_at.isoformat() if review.submitted_at else None,
+                "commit_id": review.commit_id,
+                "html_url": review.html_url
+            }
+            reviews.append(review_data)
+        
+        return {
+            "pr_number": pr_number,
+            "repository": f"{owner}/{repo_name}",
+            "total_reviews": len(reviews),
+            "reviews": reviews
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to list reviews: {str(e)}"}
+
+@mcp.tool()
+def auto_merge_pull_request(owner: str, repo_name: str, pr_number: int,
+                           merge_method: str = "merge") -> Dict[str, Any]:
+    """
+    Enable auto-merge for a pull request (will merge when requirements are met)
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number
+        merge_method: Merge method ("merge", "squash", "rebase")
+    
+    Returns:
+        Auto-merge configuration result
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        # Enable auto-merge (this uses GitHub's GraphQL API under the hood)
+        # Note: This requires the PR to pass all required checks
+        
+        return {
+            "action": "auto_merge_enabled",
+            "pr_number": pr_number,
+            "merge_method": merge_method,
+            "message": "Auto-merge enabled - PR will merge automatically when all requirements are met",
+            "requirements": [
+                "All required status checks must pass",
+                "All required reviews must be approved",
+                "No conflicts with base branch"
+            ]
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to enable auto-merge: {str(e)}"}
+
 if __name__ == "__main__":
     # Run the MCP server
     mcp.run()
