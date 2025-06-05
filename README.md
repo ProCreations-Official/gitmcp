@@ -8,6 +8,12 @@ GitMCP now includes **game-changing improvements** for open source contributions
 
 ### ✨ What's New?
 
+**🎯 GitHub Issues Management (NEW!)**
+- Create, update, and close issues with full metadata support
+- Add comments and participate in issue discussions
+- Manage labels, assignments, and milestones
+- Advanced issue search and filtering capabilities
+
 **🔄 Complete Fork-to-PR Workflows**
 - `complete_fork_to_pr_workflow` - One function handles everything: fork → branch → changes → PR
 - `fork_and_setup_contribution` - Smart forking with automatic branch creation
