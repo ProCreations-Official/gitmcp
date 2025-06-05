@@ -40,6 +40,16 @@ Before these enhancements, contributing to open source required multiple manual 
 
 This makes GitMCP the **most powerful GitHub integration for AI assistants**, enabling true collaborative development workflows!
 
+### 🎯 Complete GitHub Project Management
+
+With the addition of comprehensive Issues management, GitMCP now provides **end-to-end GitHub project collaboration**:
+
+- **Code Contributions**: Fork → Branch → Code → PR → Review → Merge
+- **Issue Management**: Create → Discuss → Label → Assign → Track → Close  
+- **Project Coordination**: Labels, milestones, assignments, and search across all project artifacts
+
+Claude can now participate in **every aspect** of GitHub project workflows, from initial issue reporting to final code delivery.
+
 ## What is MCP?
 
 The Model Context Protocol (MCP) is an open standard developed by Anthropic that enables AI assistants to connect securely with external data sources and tools. Think of it as "USB-C for AI applications" - it provides a standardized way to extend AI capabilities without custom integrations.
