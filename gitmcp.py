@@ -1650,6 +1650,466 @@ def update_repo_settings(owner: str, repo_name: str, new_name: str = None,
     except GithubException as e:
         return {"error": f"Failed to update repository settings: {str(e)}"}
 
+@mcp.tool()
+def merge_pull_request(owner: str, repo_name: str, pr_number: int, 
+                      commit_title: str = None, commit_message: str = None,
+                      merge_method: str = "merge") -> Dict[str, Any]:
+    """
+    Merge a pull request
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number to merge
+        commit_title: Title for the merge commit (optional)
+        commit_message: Message for the merge commit (optional)
+        merge_method: Merge method ("merge", "squash", "rebase")
+    
+    Returns:
+        Merge result information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        # Check if PR is mergeable
+        if not pr.mergeable:
+            return {"error": f"Pull request #{pr_number} is not mergeable. Check for conflicts."}
+        
+        if pr.state != "open":
+            return {"error": f"Pull request #{pr_number} is {pr.state}, not open"}
+        
+        # Merge the PR
+        merge_result = pr.merge(
+            commit_title=commit_title,
+            commit_message=commit_message,
+            merge_method=merge_method
+        )
+        
+        return {
+            "action": "pull_request_merged",
+            "pr_number": pr_number,
+            "merged": merge_result.merged,
+            "sha": merge_result.sha,
+            "message": merge_result.message,
+            "merge_method": merge_method,
+            "pr_url": pr.html_url
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to merge pull request: {str(e)}"}
+
+@mcp.tool()
+def close_pull_request(owner: str, repo_name: str, pr_number: int,
+                      comment: str = None) -> Dict[str, Any]:
+    """
+    Close a pull request without merging
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        pr_number: Pull request number to close
+        comment: Optional comment to add when closing
+    
+    Returns:
+        Close result information
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(pr_number)
+        
+        if pr.state != "open":
+            return {"error": f"Pull request #{pr_number} is already {pr.state}"}
+        
+        # Add comment if provided
+        if comment:
+            pr.create_issue_comment(comment)
+        
+        # Close the PR
+        pr.edit(state="closed")
+        
+        return {
+            "action": "pull_request_closed",
+            "pr_number": pr_number,
+            "title": pr.title,
+            "url": pr.html_url,
+            "comment_added": bool(comment)
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to close pull request: {str(e)}"}
+
+@mcp.tool()
+def compare_branches(owner: str, repo_name: str, base_branch: str, 
+                    head_branch: str, head_repo: str = None) -> Dict[str, Any]:
+    """
+    Compare two branches to see differences
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        base_branch: Base branch for comparison
+        head_branch: Head branch for comparison
+        head_repo: Repository for head branch (for cross-repo comparison)
+    
+    Returns:
+        Comparison information including commits and file changes
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        
+        # Construct the comparison
+        if head_repo:
+            # Cross-repository comparison
+            comparison = repo.compare(base_branch, f"{head_repo}:{head_branch}")
+        else:
+            # Same repository comparison
+            comparison = repo.compare(base_branch, head_branch)
+        
+        # Get file changes
+        files_changed = []
+        for file in comparison.files:
+            files_changed.append({
+                "filename": file.filename,
+                "status": file.status,
+                "additions": file.additions,
+                "deletions": file.deletions,
+                "changes": file.changes,
+                "patch": file.patch[:500] if file.patch else None  # Limit patch size
+            })
+        
+        # Get commit info
+        commits = []
+        for commit in comparison.commits:
+            commits.append({
+                "sha": commit.sha,
+                "message": commit.commit.message,
+                "author": commit.commit.author.name,
+                "date": commit.commit.author.date.isoformat(),
+                "url": commit.html_url
+            })
+        
+        return {
+            "base_branch": base_branch,
+            "head_branch": head_branch,
+            "head_repo": head_repo,
+            "repository": f"{owner}/{repo_name}",
+            "status": comparison.status,
+            "ahead_by": comparison.ahead_by,
+            "behind_by": comparison.behind_by,
+            "total_commits": comparison.total_commits,
+            "files_changed": files_changed,
+            "commits": commits,
+            "merge_base_commit": comparison.merge_base_commit.sha if comparison.merge_base_commit else None
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to compare branches: {str(e)}"}
+
+@mcp.tool()
+def get_project_docs(owner: str, repo_name: str, include_wiki: bool = True) -> Dict[str, Any]:
+    """
+    Get comprehensive, up-to-date documentation for a project
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        include_wiki: Whether to include wiki pages (default: True)
+    
+    Returns:
+        Complete project documentation including README, wiki, and key files
+    """
+    client = init_github_client()
+    
+    try:
+        repo = client.get_repo(f"{owner}/{repo_name}")
+        docs = {
+            "repository": f"{owner}/{repo_name}",
+            "description": repo.description,
+            "homepage": repo.homepage,
+            "topics": repo.get_topics(),
+            "readme": None,
+            "license": None,
+            "contributing": None,
+            "code_of_conduct": None,
+            "security": None,
+            "changelog": None,
+            "wiki_pages": []
+        }
+        
+        # Common documentation files to look for
+        doc_files = {
+            "readme": ["README.md", "README.rst", "README.txt", "readme.md"],
+            "license": ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"],
+            "contributing": ["CONTRIBUTING.md", "CONTRIBUTING.rst", "CONTRIBUTING.txt"],
+            "code_of_conduct": ["CODE_OF_CONDUCT.md", "CODE_OF_CONDUCT.rst"],
+            "security": ["SECURITY.md", "SECURITY.rst", "SECURITY.txt"],
+            "changelog": ["CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG.txt", "HISTORY.md"]
+        }
+        
+        # Try to find and read each documentation file
+        for doc_type, filenames in doc_files.items():
+            for filename in filenames:
+                try:
+                    file_content = repo.get_contents(filename)
+                    if file_content.encoding == "base64":
+                        content = base64.b64decode(file_content.content).decode('utf-8')
+                    else:
+                        content = file_content.content
+                    
+                    docs[doc_type] = {
+                        "filename": filename,
+                        "content": content[:5000],  # Limit content size
+                        "size": file_content.size,
+                        "url": file_content.html_url
+                    }
+                    break  # Found one, move to next doc type
+                except GithubException:
+                    continue  # File not found, try next filename
+        
+        # Get wiki pages if requested and available
+        if include_wiki and repo.has_wiki:
+            try:
+                # Note: Wiki access through API is limited, this is a basic implementation
+                docs["wiki_available"] = True
+                docs["wiki_url"] = f"{repo.html_url}/wiki"
+            except:
+                docs["wiki_available"] = False
+        
+        return docs
+        
+    except GithubException as e:
+        return {"error": f"Failed to get project documentation: {str(e)}"}
+
+@mcp.tool()
+def clone_repo_local(owner: str, repo_name: str, local_path: str, 
+                    branch: str = None) -> Dict[str, Any]:
+    """
+    Clone a GitHub repository to local filesystem
+    
+    Args:
+        owner: Repository owner
+        repo_name: Repository name
+        local_path: Local directory to clone into
+        branch: Specific branch to clone (optional)
+    
+    Returns:
+        Clone operation result
+    """
+    import subprocess
+    import os
+    
+    try:
+        repo_url = f"https://github.com/{owner}/{repo_name}.git"
+        
+        # Prepare clone command
+        cmd = ["git", "clone", repo_url, local_path]
+        if branch:
+            cmd.extend(["-b", branch])
+        
+        # Execute clone
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            return {
+                "action": "repository_cloned",
+                "repository": f"{owner}/{repo_name}",
+                "local_path": os.path.abspath(local_path),
+                "branch": branch or "main",
+                "clone_url": repo_url,
+                "success": True
+            }
+        else:
+            return {
+                "error": f"Failed to clone repository: {result.stderr}",
+                "repository": f"{owner}/{repo_name}",
+                "attempted_path": local_path
+            }
+            
+    except Exception as e:
+        return {"error": f"Clone operation failed: {str(e)}"}
+
+@mcp.tool()
+def setup_local_git_repo(local_path: str, repo_name: str, 
+                        initial_commit_message: str = "Initial commit") -> Dict[str, Any]:
+    """
+    Initialize a new git repository locally and set up GitHub integration
+    
+    Args:
+        local_path: Path to the project directory
+        repo_name: Name for the repository
+        initial_commit_message: Message for initial commit
+    
+    Returns:
+        Setup result with next steps
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Change to the project directory
+        original_dir = os.getcwd()
+        os.chdir(local_path)
+        
+        try:
+            # Initialize git repository
+            subprocess.run(["git", "init"], check=True)
+            
+            # Add all files
+            subprocess.run(["git", "add", "."], check=True)
+            
+            # Create initial commit
+            subprocess.run(["git", "commit", "-m", initial_commit_message], check=True)
+            
+            # Get current user for GitHub URL
+            client = init_github_client()
+            username = client.get_user().login
+            
+            return {
+                "action": "local_git_initialized",
+                "local_path": os.path.abspath(local_path),
+                "repo_name": repo_name,
+                "initial_commit": initial_commit_message,
+                "next_steps": [
+                    "Create GitHub repository (use create_repo tool)",
+                    f"Add remote: git remote add origin https://github.com/{username}/{repo_name}.git",
+                    "Push code: git push -u origin main"
+                ],
+                "suggested_remote_url": f"https://github.com/{username}/{repo_name}.git"
+            }
+            
+        finally:
+            os.chdir(original_dir)
+            
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Git command failed: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Setup failed: {str(e)}"}
+
+@mcp.tool()
+def create_github_repo_from_local(repo_name: str, local_path: str, 
+                                 description: str = "", private: bool = False,
+                                 auto_push: bool = True) -> Dict[str, Any]:
+    """
+    Create a new GitHub repository and push local code to it
+    
+    Args:
+        repo_name: Name for the new repository
+        local_path: Path to local project to push
+        description: Repository description
+        private: Whether to make repository private
+        auto_push: Automatically push local code to new repo
+    
+    Returns:
+        Repository creation and push result
+    """
+    import subprocess
+    import os
+    
+    try:
+        # Create the GitHub repository
+        repo_result = create_repo(repo_name, description, private, auto_init=False)
+        
+        if "error" in repo_result:
+            return repo_result
+        
+        if auto_push:
+            # Change to local directory
+            original_dir = os.getcwd()
+            os.chdir(local_path)
+            
+            try:
+                # Add remote if not exists
+                remote_url = repo_result["clone_url"]
+                subprocess.run(["git", "remote", "add", "origin", remote_url], 
+                             capture_output=True)  # Ignore error if remote exists
+                
+                # Push to GitHub
+                push_result = subprocess.run(["git", "push", "-u", "origin", "main"], 
+                                           capture_output=True, text=True)
+                
+                if push_result.returncode != 0:
+                    # Try with 'master' if 'main' fails
+                    push_result = subprocess.run(["git", "push", "-u", "origin", "master"], 
+                                               capture_output=True, text=True)
+                
+                if push_result.returncode == 0:
+                    repo_result.update({
+                        "push_success": True,
+                        "local_path": os.path.abspath(local_path),
+                        "message": "Repository created and code pushed successfully"
+                    })
+                else:
+                    repo_result.update({
+                        "push_success": False,
+                        "push_error": push_result.stderr,
+                        "message": "Repository created but push failed"
+                    })
+                    
+            finally:
+                os.chdir(original_dir)
+        
+        return repo_result
+        
+    except Exception as e:
+        return {"error": f"Failed to create repository from local code: {str(e)}"}
+
+@mcp.tool()
+def sync_local_with_remote(local_path: str, branch: str = "main") -> Dict[str, Any]:
+    """
+    Sync local repository with remote (pull latest changes)
+    
+    Args:
+        local_path: Path to local repository
+        branch: Branch to sync (default: main)
+    
+    Returns:
+        Sync operation result
+    """
+    import subprocess
+    import os
+    
+    try:
+        original_dir = os.getcwd()
+        os.chdir(local_path)
+        
+        try:
+            # Fetch latest changes
+            subprocess.run(["git", "fetch", "origin"], check=True, capture_output=True)
+            
+            # Pull changes
+            pull_result = subprocess.run(["git", "pull", "origin", branch], 
+                                       capture_output=True, text=True)
+            
+            if pull_result.returncode == 0:
+                return {
+                    "action": "repository_synced",
+                    "local_path": os.path.abspath(local_path),
+                    "branch": branch,
+                    "output": pull_result.stdout,
+                    "success": True
+                }
+            else:
+                return {
+                    "error": f"Sync failed: {pull_result.stderr}",
+                    "local_path": local_path,
+                    "branch": branch
+                }
+                
+        finally:
+            os.chdir(original_dir)
+            
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Git sync failed: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Sync operation failed: {str(e)}"}
+
 if __name__ == "__main__":
     # Run the MCP server
     mcp.run()
