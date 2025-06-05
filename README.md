@@ -73,6 +73,10 @@ This GitHub MCP server provides the following capabilities:
 - **Label Operations**: `list_repository_labels`, `create_repository_label` - Manage repo labels
 - **Search Issues**: `search_repository_issues` - Advanced issue search with filters
 
+#### Traditional Git Operations  
+- **Pull Requests**: Create and manage pull requests (enhanced with cross-repo support)
+- **Local Git Integration**: Clone repos, sync with remotes, setup local repositories
+
 ### 📁 Resources (Context for AI)
 - Repository metadata and structure
 - File contents and directory trees
