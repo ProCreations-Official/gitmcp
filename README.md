@@ -221,6 +221,29 @@ Once configured, you can interact with GitHub through your AI assistant:
 - \"Create a PR from my fork 'myusername/awesome-project' feature branch to the upstream 'original/awesome-project' main branch\"
 - \"Submit my 'bug-fix' branch from my fork to the original repository as a pull request\"
 
+### 🎯 GitHub Issues Management
+
+#### Creating and Managing Issues
+- \"Create a new issue titled 'Add dark mode support' with bug and enhancement labels\"
+- \"Create an issue about the memory leak and assign it to 'developer1' and 'developer2'\"
+- \"List all open issues labeled 'help wanted' in the react repository\"
+- \"Show me details for issue #42 including all comments and activity\"
+
+#### Issue Communication
+- \"Add a comment to issue #15 saying 'I can work on this feature'\"
+- \"Comment on issue #23 with a proposed solution and timeline\"
+- \"Close issue #18 with a comment explaining the fix\"
+
+#### Issue Organization
+- \"Add 'priority:high' and 'bug' labels to issue #31\"
+- \"Assign issue #27 to 'maintainer1' for review\"
+- \"Remove the 'help wanted' label from issue #12 since it's being worked on\"
+- \"Search for all issues mentioning 'performance' in the codebase\"
+
+#### Label Management
+- \"List all available labels in this repository\"
+- \"Create a new 'documentation' label with blue color\"
+
 ### Collaboration & PR Management
 - \"Add a comment to PR #15 saying the changes look good\"
 - \"Submit an approval review for pull request #23 with the comment 'LGTM, great work!'\"
