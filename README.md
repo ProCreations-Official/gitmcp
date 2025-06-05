@@ -253,9 +253,25 @@ Once configured, you can interact with GitHub through your AI assistant:
 ### Search & Navigation
 - `search_code` - Search for code within repositories
 
-### Branch & PR Tools
+### 🚀 Enhanced Fork & PR Tools (NEW!)
+- `fork_and_setup_contribution` - Complete fork + branch setup for contributions
+- `create_cross_repo_pull_request` - Create PRs from forks to upstream repositories
+- `complete_fork_to_pr_workflow` - Ultimate all-in-one contribution workflow
+- `update_pull_request` - Update PR title, description, or status
+- `add_pull_request_comment` - Add comments to pull requests
+- `submit_pull_request_review` - Submit reviews (approve, request changes, comment)
+- `request_pull_request_reviewers` - Request specific reviewers for PRs
+- `list_pull_request_reviews` - List all reviews for a PR
+- `auto_merge_pull_request` - Enable auto-merge when requirements are met
+
+### Traditional Branch & PR Tools
 - `create_branch` - Create new branches
-- `create_pull_request` - Create pull requests
+- `create_pull_request` - Create pull requests (same-repo)
+- `list_pull_requests` - List PRs in a repository
+- `get_pull_request_details` - Get detailed PR information
+- `merge_pull_request` - Merge pull requests
+- `close_pull_request` - Close PRs without merging
+- `compare_branches` - Compare differences between branches
 
 ## Development
 
