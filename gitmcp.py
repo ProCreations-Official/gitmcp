@@ -542,6 +542,83 @@ def search_code(owner: str, repo_name: str, query: str,
         return {"error": f"Failed to search code: {str(e)}"}
 
 @mcp.tool()
+def search_public_repos(query: str, language: str = None, sort: str = "stars", 
+                       order: str = "desc", limit: int = 20) -> Dict[str, Any]:
+    """
+    Search for public repositories on GitHub
+    
+    Args:
+        query: Search query (e.g., "machine learning", "web framework")
+        language: Filter by programming language (e.g., "Python", "JavaScript")
+        sort: Sort criteria ("stars", "forks", "help-wanted-issues", "updated")
+        order: Sort order ("desc", "asc")
+        limit: Maximum number of results to return (default: 20)
+    
+    Returns:
+        List of public repositories matching the search criteria
+    """
+    client = init_github_client()
+    
+    try:
+        # Build search query
+        search_query = query
+        if language:
+            search_query += f" language:{language}"
+        
+        # Search repositories
+        results = client.search_repositories(
+            query=search_query,
+            sort=sort,
+            order=order
+        )
+        
+        repos = []
+        count = 0
+        for repo in results:
+            if count >= limit:
+                break
+            
+            repos.append({
+                "name": repo.name,
+                "full_name": repo.full_name,
+                "description": repo.description,
+                "language": repo.language,
+                "stars": repo.stargazers_count,
+                "forks": repo.forks_count,
+                "open_issues": repo.open_issues_count,
+                "url": repo.html_url,
+                "clone_url": repo.clone_url,
+                "owner": {
+                    "login": repo.owner.login,
+                    "type": repo.owner.type,
+                    "url": repo.owner.html_url
+                },
+                "created_at": repo.created_at.isoformat(),
+                "updated_at": repo.updated_at.isoformat(),
+                "pushed_at": repo.pushed_at.isoformat() if repo.pushed_at else None,
+                "license": repo.license.name if repo.license else None,
+                "topics": repo.get_topics(),
+                "default_branch": repo.default_branch,
+                "archived": repo.archived,
+                "disabled": repo.disabled,
+                "fork": repo.fork
+            })
+            count += 1
+        
+        return {
+            "query": query,
+            "language_filter": language,
+            "sort_by": sort,
+            "order": order,
+            "total_count": results.totalCount,
+            "returned_count": len(repos),
+            "repositories": repos
+        }
+        
+    except GithubException as e:
+        return {"error": f"Failed to search repositories: {str(e)}"}
+
+@mcp.tool()
 def fork_repository(owner: str, repo_name: str, organization: str = None) -> Dict[str, Any]:
     """
     Fork a repository to your account or organization
