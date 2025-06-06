@@ -636,6 +636,37 @@ def fork_repository(owner: str, repo_name: str, organization: str = None) -> Dic
     try:
         repo = client.get_repo(f"{owner}/{repo_name}")
         
+        # Check if fork already exists before trying to create it
+        current_user = client.get_user().login
+        fork_owner = organization if organization else current_user
+        
+        try:
+            # Check if fork already exists
+            existing_fork = client.get_repo(f"{fork_owner}/{repo_name}")
+            if existing_fork.fork and existing_fork.parent and existing_fork.parent.full_name == f"{owner}/{repo_name}":
+                return {
+                    "action": "fork_already_exists",
+                    "message": f"Fork already exists at {existing_fork.full_name}",
+                    "original": {
+                        "name": repo.name,
+                        "full_name": repo.full_name,
+                        "owner": repo.owner.login,
+                        "url": repo.html_url
+                    },
+                    "fork": {
+                        "name": existing_fork.name,
+                        "full_name": existing_fork.full_name,
+                        "owner": existing_fork.owner.login,
+                        "url": existing_fork.html_url,
+                        "clone_url": existing_fork.clone_url,
+                        "ssh_url": existing_fork.ssh_url
+                    },
+                    "parent_url": existing_fork.parent.html_url if existing_fork.parent else None
+                }
+        except GithubException:
+            # Fork doesn't exist, continue with creating it
+            pass
+        
         # Fork the repository
         if organization:
             # Fork to organization
@@ -666,7 +697,17 @@ def fork_repository(owner: str, repo_name: str, organization: str = None) -> Dic
         }
         
     except GithubException as e:
-        return {"error": f"Failed to fork repository: {str(e)}"}
+        error_msg = str(e)
+        
+        # Handle specific error cases
+        if "already exists" in error_msg.lower():
+            return {"error": f"Repository fork already exists: {error_msg}"}
+        elif "not found" in error_msg.lower():
+            return {"error": f"Original repository not found: {owner}/{repo_name}"}
+        elif "permission" in error_msg.lower() or "forbidden" in error_msg.lower():
+            return {"error": f"Permission denied: {error_msg}"}
+        else:
+            return {"error": f"Failed to fork repository: {error_msg}"}
 
 @mcp.tool()
 def get_repository_info(owner: str, repo_name: str) -> Dict[str, Any]:
