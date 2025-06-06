@@ -2208,30 +2208,52 @@ def fork_and_setup_contribution(owner: str, repo_name: str, feature_branch: str,
     client = init_github_client()
     
     try:
-        # Step 1: Fork the repository (handles existing forks gracefully)
+        # Step 1: Fork the repository or check if fork already exists
         fork_result = fork_repository(owner, repo_name, organization)
         
+        # Handle fork errors
         if "error" in fork_result:
-            return fork_result
+            # Check if it's an error about fork already existing
+            if "already exists" in str(fork_result.get("error", "")).lower():
+                # Get existing fork info
+                current_user = client.get_user().login
+                fork_owner = organization if organization else current_user
+                try:
+                    existing_fork = client.get_repo(f"{fork_owner}/{repo_name}")
+                    fork_result = {
+                        "action": "fork_already_exists",
+                        "fork": {
+                            "name": existing_fork.name,
+                            "full_name": existing_fork.full_name,
+                            "owner": existing_fork.owner.login,
+                            "url": existing_fork.html_url,
+                            "clone_url": existing_fork.clone_url,
+                            "ssh_url": existing_fork.ssh_url
+                        }
+                    }
+                except GithubException:
+                    return fork_result  # Return original error if we can't find existing fork
+            else:
+                return fork_result  # Return error for other fork failures
         
-        # Extract fork info
-        if fork_result["action"] == "repository_forked":
+        # Extract fork info safely
+        if "fork" in fork_result and fork_result["fork"]:
             fork_owner = fork_result["fork"]["owner"]
             fork_name = fork_result["fork"]["name"]
-        else:  # fork_already_exists
-            fork_owner = fork_result["fork"]["owner"]
-            fork_name = fork_result["fork"]["name"]
+        else:
+            return {"error": "Unable to determine fork information"}
         
         # Step 2: Create feature branch on the fork
         branch_result = create_branch(fork_owner, fork_name, feature_branch)
         
         if "error" in branch_result:
             # If branch already exists, that's okay for this workflow
-            if "already exists" not in str(branch_result.get("error", "")):
+            if "already exists" not in str(branch_result.get("error", "")).lower():
                 return {
                     "error": f"Fork successful but failed to create branch: {branch_result['error']}",
                     "fork_info": fork_result
                 }
+            # Branch exists - that's fine, continue
         
         return {
             "action": "contribution_setup_complete",
