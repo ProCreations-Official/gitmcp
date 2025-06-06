@@ -1983,7 +1983,7 @@ def get_project_docs(owner: str, repo_name: str, include_wiki: bool = True) -> D
                     
                     docs[doc_type] = {
                         "filename": filename,
-                        "content": content[:5000],  # Limit content size
+                        "content": content,  # Full content, no truncation
                         "size": file_content.size,
                         "url": file_content.html_url
                     }
