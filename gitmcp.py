@@ -2910,9 +2910,9 @@ def get_issue_details(owner: str, repo_name: str, issue_number: int) -> Dict[str
                 "url": comment.html_url
             })
         
-        # Get events (optional, for activity tracking)
+        # Get events (for activity tracking)
         events = []
-        for event in issue.get_events()[:10]:  # Limit to last 10 events
+        for event in issue.get_events():  # Return all events, no limit
             events.append({
                 "event": event.event,
                 "actor": event.actor.login if event.actor else None,
