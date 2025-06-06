@@ -524,7 +524,7 @@ def search_code(owner: str, repo_name: str, query: str,
         results = client.search_code(search_query)
         
         matches = []
-        for item in results[:20]:  # Limit to 20 results
+        for item in results:  # Return all results, no limit
             matches.append({
                 "file_path": item.path,
                 "file_url": item.html_url,
