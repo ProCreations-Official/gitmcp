@@ -1899,7 +1899,7 @@ def compare_branches(owner: str, repo_name: str, base_branch: str,
                 "additions": file.additions,
                 "deletions": file.deletions,
                 "changes": file.changes,
-                "patch": file.patch[:500] if file.patch else None  # Limit patch size
+                "patch": file.patch if file.patch else None  # Full patch content
             })
         
         # Get commit info
