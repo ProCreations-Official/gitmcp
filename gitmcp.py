@@ -2365,42 +2365,75 @@ def complete_fork_to_pr_workflow(upstream_owner: str, upstream_repo: str,
     client = init_github_client()
     
     try:
+        # Validate inputs
+        if not all([upstream_owner, upstream_repo, feature_branch, title, body]):
+            return {"error": "Missing required parameters: upstream_owner, upstream_repo, feature_branch, title, and body are all required"}
+        
         # Step 1: Fork and setup contribution
         setup_result = fork_and_setup_contribution(upstream_owner, upstream_repo, feature_branch)
         
         if "error" in setup_result:
-            return setup_result
+            return {
+                "error": f"Failed to fork and setup: {setup_result['error']}",
+                "step": "fork_and_setup"
+            }
+        
+        # Safely extract fork info
+        if "fork_info" not in setup_result or not setup_result["fork_info"]:
+            return {
+                "error": "Fork setup completed but fork information is missing",
+                "setup_result": setup_result
+            }
         
         fork_owner = setup_result["fork_info"]["owner"]
         fork_name = setup_result["fork_info"]["name"]
         
         # Step 2: Make file changes if provided
+        changes_made = False
         if file_changes:
-            changes_result = batch_update_files(
-                fork_owner, 
-                fork_name, 
-                file_changes,
-                f"Implement changes for {title}",
-                feature_branch
-            )
-            
-            if "error" in changes_result:
+            try:
+                changes_result = batch_update_files(
+                    fork_owner, 
+                    fork_name, 
+                    file_changes,
+                    f"Implement changes for {title}",
+                    feature_branch
+                )
+                
+                if "error" in changes_result:
+                    return {
+                        "error": f"Fork and branch created but failed to make file changes: {changes_result['error']}",
+                        "setup_info": setup_result,
+                        "step": "file_changes"
+                    }
+                changes_made = True
+            except Exception as e:
                 return {
-                    "error": f"Fork and branch created but failed to make changes: {changes_result['error']}",
-                    "setup_info": setup_result
+                    "error": f"Fork and branch created but failed to make file changes: {str(e)}",
+                    "setup_info": setup_result,
+                    "step": "file_changes"
                 }
         
         # Step 3: Create the pull request
-        pr_result = create_cross_repo_pull_request(
-            upstream_owner, upstream_repo, fork_owner, fork_name,
-            feature_branch, title, body, base_branch
-        )
-        
-        if "error" in pr_result:
+        try:
+            pr_result = create_cross_repo_pull_request(
+                upstream_owner, upstream_repo, fork_owner, fork_name,
+                feature_branch, title, body, base_branch
+            )
+            
+            if "error" in pr_result:
+                return {
+                    "error": f"Fork and changes complete but failed to create PR: {pr_result['error']}",
+                    "setup_info": setup_result,
+                    "changes_made": changes_made,
+                    "step": "pull_request"
+                }
+        except Exception as e:
             return {
-                "error": f"Fork and changes complete but failed to create PR: {pr_result['error']}",
+                "error": f"Fork and changes complete but failed to create PR: {str(e)}",
                 "setup_info": setup_result,
-                "changes_made": bool(file_changes)
+                "changes_made": changes_made,
+                "step": "pull_request"
             }
         
         return {
@@ -2414,11 +2447,15 @@ def complete_fork_to_pr_workflow(upstream_owner: str, upstream_repo: str,
             ],
             "setup_info": setup_result,
             "pr_info": pr_result,
-            "changes_made": len(file_changes) if file_changes else 0
+            "changes_made": len(file_changes) if file_changes else 0,
+            "success": True
         }
         
     except Exception as e:
-        return {"error": f"Complete workflow failed: {str(e)}"}
+        return {
+            "error": f"Complete workflow failed: {str(e)}",
+            "step": "unknown"
+        }
 
 @mcp.tool()
 def update_pull_request(owner: str, repo_name: str, pr_number: int,
