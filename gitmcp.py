@@ -977,7 +977,7 @@ def get_pull_request_details(owner: str, repo_name: str, pr_number: int) -> Dict
                 "additions": file.additions,
                 "deletions": file.deletions,
                 "changes": file.changes,
-                "patch": file.patch[:1000] if file.patch else None  # Limit patch size
+                "patch": file.patch if file.patch else None  # Full patch content
             })
         
         reviews = []
